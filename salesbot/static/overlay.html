@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Salesbot Overlay</title>
+<style>
+  :root { --pink: #ff5fa2; --ink: #2a1838; --cream: #fff7fb; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
+    font-family: "Segoe UI", "Noto Sans", system-ui, sans-serif; }
+  /* 1080x1920 portrait stage scaled to whatever size the browser source is */
+  #stage { position: absolute; left: 50%; top: 50%; width: 1080px; height: 1920px;
+    transform-origin: center; }
+  #avatar { position: absolute; left: 140px; bottom: 0; width: 800px; height: 1100px;
+    transition: transform .3s ease; }
+  #avatar.bounce { animation: bounce .5s ease; }
+  @keyframes bounce { 40% { transform: translateY(-24px); } }
+  #bubble { position: absolute; left: 70px; right: 70px; bottom: 1060px; padding: 34px 44px;
+    background: var(--cream); color: var(--ink); border: 6px solid var(--pink); border-radius: 44px;
+    font-size: 50px; line-height: 1.25; font-weight: 600; box-shadow: 0 12px 0 rgba(0,0,0,.18);
+    opacity: 0; transform: translateY(20px) scale(.97); transition: opacity .25s, transform .25s; }
+  #bubble.show { opacity: 1; transform: none; }
+  #bubble .name { position: absolute; top: -36px; left: 40px; background: var(--pink); color: #fff;
+    font-size: 34px; padding: 4px 22px; border-radius: 30px; }
+  #card { position: absolute; left: 60px; top: 260px; width: 470px; padding: 26px 30px;
+    background: rgba(255,255,255,.94); border-radius: 30px; border: 5px solid #ffd23f;
+    box-shadow: 0 10px 0 rgba(0,0,0,.15); color: var(--ink); display: none; }
+  #card.show { display: block; animation: pop .35s ease; }
+  @keyframes pop { from { transform: scale(.85); opacity: 0; } }
+  #card .tag { font-size: 26px; font-weight: 800; color: #e0479e; letter-spacing: 1px; }
+  #card .pname { font-size: 42px; font-weight: 800; margin: 6px 0 10px; line-height: 1.1; }
+  #card .price { font-size: 56px; font-weight: 900; color: #e0479e; }
+  #card .old { font-size: 34px; text-decoration: line-through; color: #888; margin-left: 10px; }
+  #card .stock { font-size: 28px; margin-top: 8px; font-weight: 700; }
+  #card .basket { margin-top: 14px; font-size: 30px; background: #ffd23f; border-radius: 16px;
+    padding: 8px 16px; display: inline-block; font-weight: 800; }
+  #debug { position: absolute; right: 12px; bottom: 12px; font: 22px monospace; color: #fff;
+    background: rgba(0,0,0,.5); padding: 4px 10px; border-radius: 8px; display: none; }
+  .preview #debug { display: block; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="card"><div class="tag">★ NOW SELLING</div><div class="pname"></div>
+    <div><span class="price"></span><span class="old"></span></div>
+    <div class="stock"></div><div class="basket">🛒 Tap the yellow basket</div></div>
+
+  <!-- Built-in placeholder avatar (original artwork). Replace with any image / VTube Studio later. -->
+  <svg id="avatar" viewBox="0 0 400 550" aria-hidden="true">
+    <defs>
+      <linearGradient id="hair" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7a5cff"/><stop offset="1" stop-color="#4b2fbf"/></linearGradient>
+      <linearGradient id="dress" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff7eb6"/><stop offset="1" stop-color="#e0479e"/></linearGradient>
+    </defs>
+    <g id="body">
+      <path d="M70 550 Q80 390 200 380 Q320 390 330 550Z" fill="url(#dress)"/>
+      <path d="M160 384 L200 430 L240 384" fill="#fff" stroke="#f3c" stroke-width="3"/>
+      <rect x="178" y="335" width="44" height="55" rx="18" fill="#ffe1d0"/>
+    </g>
+    <g id="head">
+      <path d="M70 200 Q60 360 110 400 L120 250Z M330 200 Q340 360 290 400 L280 250Z" fill="url(#hair)"/>
+      <ellipse cx="200" cy="215" rx="125" ry="135" fill="#ffe7d9"/>
+      <path d="M72 205 Q80 70 200 68 Q320 70 328 205 Q300 120 250 118 Q240 160 200 150 Q170 165 150 118 Q100 125 72 205Z" fill="url(#hair)"/>
+      <circle cx="90" cy="120" r="22" fill="#ffd23f"/><circle cx="310" cy="120" r="22" fill="#ffd23f"/>
+      <g id="brows" stroke="#4b2fbf" stroke-width="6" stroke-linecap="round" fill="none">
+        <path id="browL" d="M120 172 Q145 162 170 170"/><path id="browR" d="M230 170 Q255 162 280 172"/>
+      </g>
+      <g id="eyes">
+        <g id="eyeL"><ellipse cx="148" cy="215" rx="24" ry="32" fill="#3a2a7a"/><ellipse cx="148" cy="222" rx="15" ry="20" fill="#8f7bff"/><circle cx="140" cy="203" r="8" fill="#fff"/></g>
+        <g id="eyeR"><ellipse cx="252" cy="215" rx="24" ry="32" fill="#3a2a7a"/><ellipse cx="252" cy="222" rx="15" ry="20" fill="#8f7bff"/><circle cx="244" cy="203" r="8" fill="#fff"/></g>
+        <path id="happyEyes" d="M124 220 Q148 192 172 220 M228 220 Q252 192 276 220" stroke="#3a2a7a" stroke-width="7" fill="none" stroke-linecap="round" style="display:none"/>
+      </g>
+      <ellipse cx="118" cy="262" rx="20" ry="11" fill="#ff9ec4" opacity=".6"/>
+      <ellipse cx="282" cy="262" rx="20" ry="11" fill="#ff9ec4" opacity=".6"/>
+      <g id="mouthG" transform="translate(200 278)">
+        <path id="mouthClosed" d="M-16 0 Q0 10 16 0" stroke="#a33" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <ellipse id="mouthOpen" cx="0" cy="4" rx="14" ry="0" fill="#a33"/>
+      </g>
+    </g>
+  </svg>
+
+  <div id="bubble"><span class="name">Aiko</span><span id="text"></span></div>
+  <div id="debug">waiting…</div>
+</div>
+<script>
+(() => {
+  const qs = new URLSearchParams(location.search);
+  const PLAYS_AUDIO = qs.get("audio") !== "0";
+  const PREVIEW = qs.get("preview") === "1";
+  if (PREVIEW) document.body.classList.add("preview");
+  const $ = (id) => document.getElementById(id);
+  const stage = $("stage"), avatar = $("avatar"), bubble = $("bubble"), card = $("card");
+  let ws, driver = "overlay", current = null, mouthLevel = 0, lastMouthSent = 0;
+  let audioCtx, analyser, audioEl, hideTimer, fakeTalk = false;
+
+  function fit() {
+    const s = Math.min(innerWidth / 1080, innerHeight / 1920);
+    stage.style.transform = `translate(-50%, -50%) scale(${s})`;
+  }
+  addEventListener("resize", fit); fit();
+
+  function setDriver(d) {
+    driver = d;
+    const show = qs.get("avatar") ? qs.get("avatar") === "1" : d === "overlay";
+    avatar.style.display = show ? "" : "none";
+  }
+
+  function setEmotion(e) {
+    const happy = e === "happy" || e === "excited";
+    $("happyEyes").style.display = happy ? "" : "none";
+    $("eyeL").style.display = $("eyeR").style.display = happy ? "none" : "";
+    const brow = { sorry: ["M120 165 Q145 175 170 178", "M230 178 Q255 175 280 165"],
+                   thinking: ["M120 168 Q145 158 170 168", "M230 176 Q255 172 280 176"] }[e]
+              || ["M120 172 Q145 162 170 170", "M230 170 Q255 162 280 172"];
+    $("browL").setAttribute("d", brow[0]); $("browR").setAttribute("d", brow[1]);
+    if (e === "excited") { avatar.classList.remove("bounce"); void avatar.offsetWidth; avatar.classList.add("bounce"); }
+  }
+
+  function renderMouth(v) {
+    $("mouthOpen").setAttribute("ry", (v * 18).toFixed(1));
+    $("mouthClosed").style.display = v > 0.08 ? "none" : "";
+  }
+
+  // blink
+  setInterval(() => {
+    const eyes = [$("eyeL"), $("eyeR")];
+    eyes.forEach((g) => { g.style.transformBox = "fill-box"; g.style.transformOrigin = "center";
+      g.style.transform = "scaleY(.1)"; });
+    setTimeout(() => eyes.forEach((g) => { g.style.transform = ""; }), 120);
+  }, 3800);
+
+  function loop(t) {
+    let v = 0;
+    if (analyser) {
+      const buf = new Uint8Array(analyser.fftSize);
+      analyser.getByteTimeDomainData(buf);
+      let sum = 0; for (const x of buf) { const d = (x - 128) / 128; sum += d * d; }
+      v = Math.min(1, Math.sqrt(sum / buf.length) * 4.5);
+    } else if (fakeTalk) {
+      v = 0.35 + 0.35 * Math.abs(Math.sin(t / 90)) * (0.6 + 0.4 * Math.sin(t / 230));
+    }
+    mouthLevel = mouthLevel * 0.5 + v * 0.5;
+    renderMouth(mouthLevel);
+    if (driver === "vtube_studio" && PLAYS_AUDIO && ws && ws.readyState === 1 && t - lastMouthSent > 66) {
+      ws.send(JSON.stringify({ type: "mouth", v: +mouthLevel.toFixed(2) })); lastMouthSent = t;
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  function showCard(p) {
+    if (!p) { card.classList.remove("show"); return; }
+    card.querySelector(".pname").textContent = p.name;
+    const promo = p.live_promo_price_rm, price = p.price_rm;
+    card.querySelector(".price").textContent = promo ? `RM${promo}` : price ? `RM${price}` : "";
+    card.querySelector(".old").textContent = promo && price ? `RM${price}` : "";
+    card.querySelector(".stock").textContent =
+      { in_stock: "✅ In stock", low_stock: "🔥 Almost sold out!", out_of_stock: "❌ Sold out" }[p.stock] || "";
+    card.classList.add("show");
+  }
+
+  function done(id) {
+    if (!current || current.id !== id) return;
+    current = null; fakeTalk = false;
+    if (analyser) { analyser = null; }
+    hideTimer = setTimeout(() => bubble.classList.remove("show"), 2500);
+    if (PLAYS_AUDIO && ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "speech_done", id }));
+    $("debug").textContent = "idle";
+  }
+
+  function stopAll() {
+    if (audioEl) { audioEl.pause(); audioEl.src = ""; audioEl = null; }
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
+    current = null; fakeTalk = false; analyser = null;
+    bubble.classList.remove("show"); renderMouth(0);
+  }
+
+  function guessLang(text) {
+    if (/[一-鿿]/.test(text)) return "zh";
+    if (/\b(saya|awak|kita|boleh|harga|ada|tak|nak|beli|terima kasih|jom|ini|untuk)\b/i.test(text)) return "ms";
+    return "en";
+  }
+
+  function speakBrowser(m) {
+    const fallback = () => setTimeout(() => done(m.id), m.duration * 1000);
+    if (!PLAYS_AUDIO || !("speechSynthesis" in window)) { fakeTalk = true; return fallback(); }
+    const u = new SpeechSynthesisUtterance(m.text);
+    const lang = guessLang(m.text);
+    const voices = speechSynthesis.getVoices();
+    const v = voices.find((x) => x.lang.toLowerCase().startsWith(lang) && /female|zira|aria|siti|xiaoxiao|yasmin/i.test(x.name))
+           || voices.find((x) => x.lang.toLowerCase().startsWith(lang));
+    if (v) u.voice = v;
+    u.lang = v ? v.lang : { zh: "zh-CN", ms: "ms-MY", en: "en-US" }[lang];
+    u.pitch = 1.35; u.rate = 1.05;
+    let ended = false; const end = () => { if (!ended) { ended = true; done(m.id); } };
+    u.onend = end; u.onerror = end;
+    fakeTalk = true;
+    speechSynthesis.speak(u);
+    setTimeout(end, m.duration * 1000 * 2 + 4000);   // safety net
+  }
+
+  function speakAudio(m) {
+    if (!PLAYS_AUDIO) { fakeTalk = true; return setTimeout(() => done(m.id), m.duration * 1000); }
+    audioEl = new Audio(m.audio_url);
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaElementSource(audioEl);
+      analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024;
+      src.connect(analyser); analyser.connect(audioCtx.destination);
+      if (audioCtx.state === "suspended") audioCtx.resume();
+    } catch (e) { fakeTalk = true; }
+    audioEl.onended = () => done(m.id);
+    audioEl.onerror = () => done(m.id);
+    audioEl.play().catch(() => { fakeTalk = true; setTimeout(() => done(m.id), m.duration * 1000); });
+  }
+
+  function onSpeak(m) {
+    stopAll(); clearTimeout(hideTimer);
+    current = m;
+    $("text").textContent = m.text;
+    bubble.classList.add("show");
+    if (m.product) showCard(m.product);
+    if (m.emotion) setEmotion(m.emotion);
+    $("debug").textContent = `speaking #${m.id} (${m.engine})`;
+    if (m.engine === "elevenlabs" && m.audio_url) speakAudio(m); else speakBrowser(m);
+  }
+
+  function connect() {
+    const role = "overlay";
+    ws = new WebSocket(`ws://${location.host}/ws?role=${role}&audio=${PLAYS_AUDIO ? 1 : 0}`);
+    ws.onmessage = (ev) => {
+      const m = JSON.parse(ev.data);
+      switch (m.type) {
+        case "hello": setDriver(m.avatar_driver); showCard(m.product);
+          document.querySelector("#bubble .name").textContent = m.persona_name || "Aiko"; break;
+        case "speak": onSpeak(m); break;
+        case "stop_audio": stopAll(); setEmotion("neutral"); break;
+        case "product": showCard(m.product); break;
+        case "emotion": setEmotion(m.emotion); break;
+        case "avatar_driver": setDriver(m.driver); break;
+        case "persona": document.querySelector("#bubble .name").textContent = m.name; break;
+      }
+    };
+    ws.onclose = () => { $("debug").textContent = "reconnecting…"; setTimeout(connect, 1500); };
+  }
+  setEmotion("neutral");
+  connect();
+})();
+</script>
+</body>
+</html>

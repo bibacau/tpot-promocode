@@ -1,0 +1,4 @@
+name,price,promo_price,stock_status,description,features,sku
+Baju Kurung Moden,59,39,in_stock,Baju kurung moden untuk kegunaan harian dan majlis.,"Kain cotton sejuk, saiz S hingga XL, 5 warna",BK-001
+Tudung Bawal Premium,25,19.90,low_stock,Tudung bawal bidang 45.,"Tak perlu gosok, tidak jarang, 12 warna",TB-045
+Serum Vitamin C 30ml,49.90,,in_stock,Serum untuk kulit cerah dan sekata.,"Sesuai kulit sensitif, KKM notified, 30ml",SV-030

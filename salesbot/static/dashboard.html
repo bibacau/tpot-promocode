@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Salesperson Control</title>
+<style>
+  :root {
+    --bg: #f6f4fa; --panel: #ffffff; --ink: #1f1830; --muted: #6d6680; --line: #e4dfee;
+    --accent: #7a5cff; --accent-ink: #fff; --pink: #e0479e; --ok: #1f9d55; --warn: #c27c00; --bad: #d93025;
+    --chip: #efeaf9; --shadow: 0 1px 2px rgba(20,10,40,.06), 0 4px 16px rgba(20,10,40,.05);
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #15121d; --panel: #1f1a2b; --ink: #eee9f8; --muted: #a39cb6; --line: #332c44;
+    --chip: #2b2440; --shadow: none; } }
+  :root[data-theme="dark"] { --bg: #15121d; --panel: #1f1a2b; --ink: #eee9f8; --muted: #a39cb6; --line: #332c44;
+    --chip: #2b2440; --shadow: none; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 10; background: var(--panel); border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0 8px 0 0; white-space: nowrap; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button { background: none; border: 0; padding: 7px 12px; border-radius: 8px; color: var(--muted); cursor: pointer; font: inherit; }
+  nav button.on { background: var(--chip); color: var(--ink); font-weight: 600; }
+  .spacer { flex: 1; }
+  #stopBtn { background: var(--bad); color: #fff; border: 0; border-radius: 10px; padding: 10px 18px;
+    font-weight: 800; letter-spacing: .5px; cursor: pointer; font-size: 14px; box-shadow: 0 2px 0 #8c1d16; }
+  #stopBtn:active { transform: translateY(1px); }
+  #resumeBtn { display: none; }
+  body.stopped #resumeBtn { display: inline-block; }
+  body.stopped #stopBanner { display: block; }
+  #stopBanner { display: none; background: var(--bad); color: #fff; padding: 8px 16px; font-weight: 700; text-align: center; }
+  main { padding: 16px; max-width: 1500px; margin: 0 auto; }
+  section.tab { display: none; } section.tab.on { display: block; }
+  .grid { display: grid; gap: 14px; }
+  .live { grid-template-columns: minmax(260px, 1fr) minmax(300px, 1.2fr) minmax(280px, 380px); }
+  @media (max-width: 1100px) { .live { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 720px) { .live { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: var(--shadow); min-width: 0; }
+  .card h2 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .count { background: var(--chip); border-radius: 20px; padding: 0 8px; font-size: 12px; color: var(--muted); }
+  .muted { color: var(--muted); } .small { font-size: 12px; }
+  button.b { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+    border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button.b:hover { border-color: var(--accent); }
+  button.p { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.g { background: var(--ok); color: #fff; border-color: var(--ok); }
+  button.r { color: var(--bad); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  input, select, textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 9px; width: 100%; }
+  textarea { resize: vertical; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row > * { flex: 0 0 auto; } .row .grow { flex: 1 1 160px; }
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill { font-size: 12px; padding: 3px 9px; border-radius: 20px; background: var(--chip); color: var(--muted); white-space: nowrap; }
+  .pill.ok { background: #d9f5e5; color: #11633a; } .pill.warn { background: #fff0cc; color: #7a5200; } .pill.bad { background: #fde0dd; color: #9c1c13; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pill.ok { background: #143d29; color: #8de0b3; }
+    :root:not([data-theme="light"]) .pill.warn { background: #3d3010; color: #f2cf7a; } :root:not([data-theme="light"]) .pill.bad { background: #451b18; color: #f5a39b; } }
+  .toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .toggle button { border: 0; background: none; padding: 6px 12px; cursor: pointer; color: var(--muted); font: inherit; }
+  .toggle button.on { background: var(--accent); color: #fff; }
+  .feed { max-height: 460px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+  .cmt { padding: 6px 8px; border-radius: 8px; background: var(--bg); }
+  .cmt b { font-weight: 600; } .cmt .st { float: right; font-size: 11px; }
+  .appr { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+  .appr.flag { border-color: var(--warn); }
+  .appr .q { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .speaking { background: var(--chip); border-radius: 10px; padding: 10px; min-height: 44px; }
+  .preview { position: relative; width: 100%; aspect-ratio: 9/16; background:
+    repeating-conic-gradient(#8881 0 25%, transparent 0 50%) 0 0/24px 24px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+  .preview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .setup { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  .step { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; }
+  .secret-hint { font-size: 12px; color: var(--ok); }
+  .tests li { margin-bottom: 14px; }
+  .tests .row { margin-top: 6px; }
+  #toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 50; max-width: 380px; }
+  .toast { background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+  .toast.danger { background: var(--bad); color: #fff; } .toast.warning { background: #b87500; color: #fff; }
+  code { background: var(--chip); padding: 1px 5px; border-radius: 5px; word-break: break-all; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛍️ AI Salesperson</h1>
+  <nav id="nav">
+    <button data-tab="live" class="on">Live</button>
+    <button data-tab="products">Products</button>
+    <button data-tab="setup">Setup</button>
+    <button data-tab="tests">Tests</button>
+    <button data-tab="history">History</button>
+  </nav>
+  <div class="spacer"></div>
+  <div class="pills" id="pills"></div>
+  <button class="b g" id="resumeBtn" onclick="ctl('resume')">Resume</button>
+  <button id="stopBtn" title="Shortcut: Esc" onclick="ctl('stop')">■ EMERGENCY STOP</button>
+</header>
+<div id="stopBanner">EMERGENCY STOP ACTIVE: the AI is silent and all queues are cleared. Press Resume when ready.</div>
+
+<main>
+<!-- ═════════════ LIVE ═════════════ -->
+<section class="tab on" id="tab-live">
+  <div class="card" style="margin-bottom:14px">
+    <div class="row">
+      <button class="b p" id="startBtn" onclick="ctl('start')">▶ Start AI</button>
+      <button class="b" id="pauseBtn" onclick="ctl('pause')">❚❚ Pause AI</button>
+      <span class="muted small">Mode:</span>
+      <div class="toggle" id="modeToggle">
+        <button data-mode="approve" title="Every AI line waits for your approval">Approve each line</button>
+        <button data-mode="auto" title="AI speaks on its own; flagged lines still need you">Autonomous</button>
+      </div>
+      <span class="muted small">Human takeover:</span>
+      <div class="toggle" id="takeoverToggle"><button data-on="0">Off</button><button data-on="1">On</button></div>
+      <div class="spacer"></div>
+      <span class="small muted" id="sessionInfo"></span>
+      <button class="b small" onclick="ctl('end')" title="Close this session in history">End session</button>
+    </div>
+  </div>
+  <div class="grid live">
+    <div class="card">
+      <h2>Comments <span class="count" id="cq">0 queued</span></h2>
+      <div class="feed" id="feed"></div>
+      <label>Add a test comment</label>
+      <div class="row">
+        <input id="cUser" placeholder="name" style="width:110px" value="tester">
+        <input id="cText" class="grow" placeholder="e.g. berapa harga?" onkeydown="if(event.key==='Enter')sendComment()">
+        <button class="b" onclick="sendComment()">Send</button>
+      </div>
+      <label>Simulated viewers</label>
+      <div class="row">
+        <button class="b" onclick="simBurst(5)">+5 comments</button>
+        <button class="b" onclick="simBurst(25)">+25 at once</button>
+        <button class="b" id="simBtn" onclick="simToggle()">Start stream of comments</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Waiting for your approval <span class="count" id="pc">0</span></h2>
+      <div id="approvals"><p class="muted">Nothing waiting.</p></div>
+      <h2 style="margin-top:14px">Now speaking <span class="count" id="sq">0 in queue</span></h2>
+      <div class="speaking" id="speaking"><span class="muted">Silent</span></div>
+      <h2 style="margin-top:14px">Say something yourself</h2>
+      <textarea id="sayText" rows="2" placeholder="Type what the avatar should say next (spoken before AI lines)"></textarea>
+      <div class="row" style="margin-top:6px"><button class="b p" onclick="say()">🔊 Speak this</button>
+        <span class="small muted">Tip: turn on Human takeover to silence the AI while you talk.</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Stream preview</h2>
+      <div class="preview"><iframe id="previewFrame" allow="autoplay" src="/overlay?audio=0&preview=1"></iframe></div>
+      <div class="row" style="margin-top:6px">
+        <label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--ink)">
+          <input type="checkbox" id="hearVoice" style="width:auto"> Hear voice in this browser</label>
+      </div>
+      <label>Featured product</label>
+      <div class="row"><select id="featured" class="grow"></select>
+        <button class="b p" onclick="introduce()">Introduce</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ PRODUCTS ═════════════ -->
+<section class="tab" id="tab-products">
+  <div class="grid" style="grid-template-columns: minmax(0,2fr) minmax(280px,1fr)">
+    <div class="card">
+      <h2>Product catalogue <span class="count" id="prodCount">0</span></h2>
+      <p class="small muted">The AI only uses these facts. Prices are in RM. Inactive products are hidden from the AI.</p>
+      <div style="overflow:auto"><table><thead><tr><th>Name</th><th>Price</th><th>Live promo</th><th>Stock</th><th>Active</th><th></th></tr></thead>
+        <tbody id="prodRows"></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2 id="pfTitle">Add product</h2>
+      <input type="hidden" id="pf-id">
+      <label>Name *</label><input id="pf-name">
+      <div class="row"><div class="grow"><label>Price (RM)</label><input id="pf-price" type="number" step="0.01" min="0"></div>
+        <div class="grow"><label>Live promo price (RM)</label><input id="pf-promo_price" type="number" step="0.01" min="0"></div></div>
+      <div class="row"><div class="grow"><label>Stock</label><select id="pf-stock_status">
+        <option value="in_stock">In stock</option><option value="low_stock">Low stock</option><option value="out_of_stock">Out of stock</option></select></div>
+        <div class="grow"><label>SKU</label><input id="pf-sku"></div></div>
+      <label>Description</label><textarea id="pf-description" rows="3"></textarea>
+      <label>Key selling points (the AI will highlight these)</label><textarea id="pf-features" rows="3" placeholder="e.g. 100% cotton, size S–XL, 3 colours"></textarea>
+      <label>TikTok Shop product ID (optional)</label><input id="pf-tiktok_product_id">
+      <label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" id="pf-active" style="width:auto" checked> Active</label>
+      <div class="row" style="margin-top:10px"><button class="b p" onclick="saveProduct()">Save</button>
+        <button class="b" onclick="resetProductForm()">Clear</button></div>
+      <h2 style="margin-top:20px">Import CSV</h2>
+      <p class="small muted">Header row: <code>name,price,promo_price,stock_status,description,features,sku</code></p>
+      <textarea id="csv" rows="4"></textarea>
+      <div class="row" style="margin-top:6px"><button class="b" onclick="importCsv()">Import</button>
+        <input type="file" id="csvFile" accept=".csv" style="width:auto" onchange="loadCsvFile(this)"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ SETUP ═════════════ -->
+<section class="tab" id="tab-setup">
+  <p class="muted">Fill in only what you have. Keys are stored on this computer only (in <code>data/salesbot.sqlite3</code>) and are never shown again in full.</p>
+  <div class="grid setup">
+    <div class="card">
+      <h2><span class="step">1</span> AI brain: DeepSeek</h2>
+      <label>API key <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">get one ↗</a></label>
+      <input id="s-deepseek_api_key" type="password" autocomplete="off" placeholder="sk-…"><div class="secret-hint" id="h-deepseek_api_key"></div>
+      <label>Model</label><input id="s-deepseek_model">
+      <div class="row" style="margin-top:10px"><button class="b p" onclick="saveSection('deepseek')">Save</button>
+        <button class="b" onclick="testDeepseek()">Test connection</button></div>
+      <p class="small muted">Each test or reply uses a tiny amount of your DeepSeek balance.</p>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">2</span> Voice</h2>
+      <label>Voice engine</label>
+      <select id="s-tts_engine"><option value="browser">Free test voice (browser, for testing only)</option>
+        <option value="elevenlabs">ElevenLabs (natural voice, uses credits)</option></select>
+      <label>ElevenLabs API key <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">get one ↗</a></label>
+      <input id="s-elevenlabs_api_key" type="password" autocomplete="off"><div class="secret-hint" id="h-elevenlabs_api_key"></div>
+      <label>Voice</label>
+      <div class="row"><select id="s-elevenlabs_voice_id" class="grow"><option value="">(load voices first)</option></select>
+        <button class="b" onclick="loadVoices()">Load voices</button></div>
+      <label>Model</label><select id="s-elevenlabs_model">
+        <option value="eleven_flash_v2_5">Flash v2.5 (fast, cheaper, supports Malay)</option>
+        <option value="eleven_multilingual_v2">Multilingual v2 (highest quality)</option></select>
+      <div class="row" style="margin-top:10px"><button class="b p" onclick="saveSection('voice')">Save</button>
+        <button class="b" onclick="testVoice()">Test voice</button></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">3</span> Persona and shop</h2>
+      <div class="row"><div class="grow"><label>Avatar name</label><input id="s-persona_name"></div>
+        <div class="grow"><label>Shop name</label><input id="s-shop_name"></div></div>
+      <label>Personality</label><textarea id="s-persona_style" rows="3"></textarea>
+      <div class="row"><div class="grow"><label>Reply language</label><select id="s-reply_language">
+        <option value="auto">Same as the viewer (EN / BM / 中文)</option><option value="en">English</option>
+        <option value="ms">Bahasa Melayu</option><option value="zh">中文</option></select></div>
+        <div class="grow"><label>Max words per reply</label><input id="s-max_reply_words" type="number" min="10" max="120"></div></div>
+      <label>Extra rules for the AI (optional)</label><textarea id="s-extra_rules" rows="2" placeholder="e.g. Mention free shipping above RM50."></textarea>
+      <div class="row" style="margin-top:10px"><button class="b p" onclick="saveSection('persona')">Save</button></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">4</span> OBS Studio</h2>
+      <p class="small muted">In OBS: Tools → WebSocket Server Settings → Enable, then copy the password here. The app never starts the stream; you always press <b>Start Streaming</b> in OBS yourself.</p>
+      <label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" id="s-obs_enabled" style="width:auto"> Control OBS</label>
+      <div class="row"><div class="grow"><label>Host</label><input id="s-obs_host"></div>
+        <div style="width:100px"><label>Port</label><input id="s-obs_port" type="number"></div></div>
+      <label>Password</label><input id="s-obs_password" type="password" autocomplete="off"><div class="secret-hint" id="h-obs_password"></div>
+      <div class="row"><div class="grow"><label>Main scene</label><input id="s-obs_main_scene"></div>
+        <div class="grow"><label>Emergency/BRB scene</label><input id="s-obs_brb_scene"></div></div>
+      <label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" id="s-obs_switch_on_stop" style="width:auto"> Switch to BRB scene on emergency stop</label>
+      <div class="row" style="margin-top:10px"><button class="b p" onclick="saveSection('obs')">Save</button>
+        <button class="b" onclick="obsConnect()">Connect</button>
+        <button class="b" onclick="obsSetup()">Create scenes automatically</button></div>
+      <label>Overlay URL (add as a Browser Source, 1080×1920, if you're not using auto-setup)</label>
+      <div class="row"><code id="overlayUrl" class="grow"></code><button class="b small" onclick="copy(overlayUrl.textContent)">Copy</button></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">5</span> Avatar</h2>
+      <label>Avatar driver</label>
+      <select id="s-avatar_driver"><option value="overlay">Built-in anime avatar (no install)</option>
+        <option value="vtube_studio">VTube Studio (Live2D)</option><option value="none">No avatar (captions only)</option></select>
+      <div id="vtsBox">
+        <div class="row"><div class="grow"><label>VTube Studio host</label><input id="s-vts_host"></div>
+          <div style="width:100px"><label>API port</label><input id="s-vts_port" type="number"></div></div>
+        <label>Mouth parameter</label><input id="s-vts_mouth_param">
+        <label>Emotion → hotkey (JSON)</label><input id="s-vts_emotion_hotkeys" placeholder='{"happy":"Smile","sorry":"Sad"}'>
+        <p class="small muted">In VTube Studio, enable Settings → "Start API". On first Connect, click <b>Allow</b> in VTube Studio.</p>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="b p" onclick="saveSection('avatar')">Save</button>
+        <button class="b" onclick="post('/api/avatar/connect').then(()=>toast('Avatar connected'))">Connect</button>
+        <button class="b" onclick="post('/api/avatar/test').then(()=>toast('Animation test finished'))">Test animation</button></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">6</span> Behaviour</h2>
+      <label>Default mode</label><select id="s-mode"><option value="approve">Approve each line (safest)</option><option value="auto">Autonomous</option></select>
+      <label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" id="s-idle_enabled" style="width:auto"> Pitch the featured product when chat is quiet</label>
+      <div class="row">
+        <div class="grow"><label>Quiet time before pitching (s)</label><input id="s-idle_seconds" type="number" min="10"></div>
+        <div class="grow"><label>Per-viewer cooldown (s)</label><input id="s-user_cooldown_seconds" type="number" min="0"></div></div>
+      <div class="row">
+        <div class="grow"><label>Ignore comments older than (s)</label><input id="s-comment_max_age_seconds" type="number" min="10"></div>
+        <div class="grow"><label>Max lines waiting</label><input id="s-max_pending" type="number" min="1" max="10"></div></div>
+      <div class="row" style="margin-top:10px"><button class="b p" onclick="saveSection('behaviour')">Save</button></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">7</span> TikTok</h2>
+      <p class="muted">Not connected yet. Phase 4 will add only <b>official, authorised</b> TikTok integrations. Until then, use simulated or manually typed comments.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ TESTS ═════════════ -->
+<section class="tab" id="tab-tests">
+  <div class="card">
+    <h2>Phase 3 checklist (run on your PC before connecting TikTok)</h2>
+    <p class="small muted">Tick each item once you've seen it work. Ticks are saved in this browser. Open OBS's preview or the Live tab preview while testing.</p>
+    <ol class="tests" id="testList"></ol>
+  </div>
+</section>
+
+<!-- ═════════════ HISTORY ═════════════ -->
+<section class="tab" id="tab-history">
+  <div class="grid" style="grid-template-columns: minmax(240px,1fr) minmax(0,3fr)">
+    <div class="card"><h2>Sessions</h2><div id="sessions"></div></div>
+    <div class="card"><h2>Session log</h2><div id="historyBox" class="muted">Pick a session.</div></div>
+  </div>
+</section>
+</main>
+<div id="toasts"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let S = {}, STATE = {}, PRODUCTS = [], SETTINGS = {};
+
+const RECENT_TOASTS = new Map();
+function toast(msg, level = "") {
+  const now = Date.now();
+  if (now - (RECENT_TOASTS.get(msg) || 0) < 10000) return;   // don't repeat the same alert
+  RECENT_TOASTS.set(msg, now);
+  while ($("#toasts").children.length >= 4) $("#toasts").firstChild.remove();
+  const t = document.createElement("div"); t.className = "toast " + level; t.textContent = msg;
+  $("#toasts").appendChild(t); setTimeout(() => t.remove(), level === "danger" ? 8000 : 4500);
+}
+async function api(method, url, body) {
+  const r = await fetch(url, { method, headers: { "Content-Type": "application/json", "X-Salesbot": "1" },
+    body: body === undefined ? undefined : JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(data.detail || r.statusText); e.status = r.status; throw e; }
+  return data;
+}
+const get = (u) => api("GET", u);
+const post = (u, b) => api("POST", u, b ?? {}).catch((e) => { toast(e.message, "warning"); throw e; });
+const copy = (t) => navigator.clipboard.writeText(t).then(() => toast("Copied"));
+
+// ── tabs ──
+document.querySelectorAll("#nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("#nav button").forEach((x) => x.classList.toggle("on", x === b));
+  document.querySelectorAll("section.tab").forEach((s) => s.classList.toggle("on", s.id === "tab-" + b.dataset.tab));
+  if (b.dataset.tab === "history") loadSessions();
+  try { localStorage.setItem("tab", b.dataset.tab); } catch {}
+});
+try { const t = localStorage.getItem("tab"); if (t) document.querySelector(`#nav button[data-tab="${t}"]`)?.click(); } catch {}
+
+// ── controls ──
+async function ctl(action) {
+  if (action === "stop") { await api("POST", "/api/control/stop"); return; }   // never blocked by a toast
+  if (action === "start" && S.deepseek && !S.deepseek.configured)
+    toast("DeepSeek API key is not set (Setup tab): comments can't be answered yet. Product intros use templates.", "warning");
+  await post("/api/control/" + action);
+}
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") ctl("stop"); });
+document.querySelectorAll("#modeToggle button").forEach((b) => b.onclick = () => post("/api/mode", { mode: b.dataset.mode }));
+document.querySelectorAll("#takeoverToggle button").forEach((b) => b.onclick = () => post("/api/takeover", { on: b.dataset.on === "1" }));
+async function sendComment() {
+  const text = $("#cText").value.trim(); if (!text) return;
+  await post("/api/comments", { user: $("#cUser").value || "tester", text }); $("#cText").value = "";
+}
+const simBurst = (n) => post("/api/simulator/burst", { n });
+async function simToggle() {
+  if (S.simulator?.active) await post("/api/simulator/stop"); else await post("/api/simulator/start", { per_minute: 15 });
+  refresh();
+}
+async function say() {
+  const text = $("#sayText").value.trim(); if (!text) return;
+  await post("/api/say", { text }); $("#sayText").value = "";
+}
+$("#featured").onchange = () => post("/api/featured", { product_id: $("#featured").value ? +$("#featured").value : null });
+async function introduce() {
+  const id = $("#featured").value; if (!id) return toast("Pick a product first", "warning");
+  toast("Writing product introduction…"); await post("/api/introduce/" + id);
+}
+$("#hearVoice").onchange = (e) => { $("#previewFrame").src = `/overlay?audio=${e.target.checked ? 1 : 0}&preview=1`; };
+
+// ── rendering ──
+function pill(label, cls, title = "") { return `<span class="pill ${cls}" title="${esc(title)}">${esc(label)}</span>`; }
+function renderPills() {
+  const s = S; if (!s.deepseek) return;
+  const ds = s.deepseek.configured ? (s.deepseek.last_error ? "bad" : "ok") : "warn";
+  const v = s.voice.engine === "browser" ? "warn" : (s.voice.elevenlabs_configured ? (s.voice.last_error ? "bad" : "ok") : "bad");
+  const obs = !s.obs.enabled ? "" : s.obs.connected ? "ok" : "bad";
+  const av = s.avatar.driver === "vtube_studio" ? (s.avatar.connected ? "ok" : "bad") : "ok";
+  $("#pills").innerHTML =
+    pill("DeepSeek", ds, s.deepseek.last_error || (s.deepseek.configured ? "configured" : "API key missing")) +
+    pill(s.voice.engine === "browser" ? "Voice: test" : "ElevenLabs", v, s.voice.last_error || "") +
+    pill("OBS", obs, s.obs.last_error || (s.obs.enabled ? "" : "disabled")) +
+    pill("Avatar", av, s.avatar.last_error || s.avatar.driver) +
+    pill(`Overlay ×${s.overlay.connected}`, s.overlay.audio_players ? "ok" : "warn", "audio players: " + s.overlay.audio_players) +
+    pill("TikTok", "", "Phase 4");
+}
+function renderState() {
+  const st = STATE;
+  document.body.classList.toggle("stopped", !!st.stopped);
+  $("#startBtn").disabled = st.running || st.stopped; $("#pauseBtn").disabled = !st.running;
+  $("#startBtn").textContent = st.running ? "● AI running" : "▶ Start AI";
+  document.querySelectorAll("#modeToggle button").forEach((b) => b.classList.toggle("on", b.dataset.mode === st.mode));
+  document.querySelectorAll("#takeoverToggle button").forEach((b) => b.classList.toggle("on", (b.dataset.on === "1") === !!st.takeover));
+  $("#cq").textContent = `${st.comment_queue} queued`;
+  $("#sq").textContent = `${st.speech_queue} in queue` + (st.generating ? ` · ${st.generating} writing` : "");
+  $("#sessionInfo").textContent = st.session_id ? `Session #${st.session_id}` : "No session";
+  $("#speaking").innerHTML = st.speaking ? `🔊 <b>${esc(st.speaking.kind)}</b>: ${esc(st.speaking.text)}` : '<span class="muted">Silent</span>';
+  if (document.activeElement?.closest?.("#approvals")) { $("#pc").textContent = st.pending.length; return; }
+  $("#pc").textContent = st.pending.length;
+  $("#approvals").innerHTML = st.pending.length ? st.pending.map((p) => `
+    <div class="appr ${p.flags.length || p.needs_human ? "flag" : ""}">
+      <div class="q">${p.comment ? `💬 <b>${esc(p.comment.user)}</b>: ${esc(p.comment.text)}` : `📦 ${esc(p.kind)}`}
+        ${p.flags.length ? `<br>⚠️ ${esc(p.flags.join(", "))}` : ""}${p.needs_human ? ` · 🙋 needs human (${esc(p.intent)})` : ""}
+        ${p.source === "fallback" ? " · template (AI offline)" : ""}</div>
+      <textarea rows="2" id="ap-${p.reply_id}">${esc(p.text)}</textarea>
+      <div class="row" style="margin-top:6px">
+        <button class="b g" onclick="approve(${p.reply_id})">✓ Approve and speak</button>
+        <button class="b r" onclick="post('/api/reject/${p.reply_id}')">✕ Reject</button></div>
+    </div>`).join("") : '<p class="muted">Nothing waiting.</p>';
+  const f = $("#featured"); if (document.activeElement !== f) f.value = st.featured_product_id ?? "";
+}
+function approve(id) { post("/api/approve/" + id, { text: $("#ap-" + id).value }); }
+
+const STATUS_CLS = { queued: "warn", answering: "warn", answered: "ok", blocked: "bad", skipped: "", expired: "",
+  not_queued: "", ai_failed: "bad", dropped: "" };
+function addComment(c) {
+  const d = document.createElement("div"); d.className = "cmt"; d.id = "c-" + c.id;
+  d.innerHTML = `<span class="st pill ${STATUS_CLS[c.status] || ""}">${esc(c.status)}${c.reason ? " · " + esc(c.reason) : ""}</span>
+    <b>${esc(c.user)}</b> <span class="muted small">${esc(c.source)}</span><br>${esc(c.text)}`;
+  const feed = $("#feed"); feed.prepend(d); while (feed.children.length > 150) feed.lastChild.remove();
+}
+function updateComment(id, status, reason) {
+  const el = document.querySelector(`#c-${id} .st`); if (!el) return;
+  el.className = "st pill " + (STATUS_CLS[status] || ""); el.textContent = status + (reason ? " · " + reason : "");
+}
+
+// ── websocket ──
+function connectWS() {
+  const ws = new WebSocket(`ws://${location.host}/ws?role=dashboard`);
+  ws.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.type === "hello" || m.type === "state") { STATE = m.state; renderState(); }
+    else if (m.type === "comment") addComment(m.comment);
+    else if (m.type === "comment_status") updateComment(m.id, m.status, m.reason);
+    else if (m.type === "alert") toast(m.message, m.level);
+  };
+  ws.onclose = () => setTimeout(connectWS, 1500);
+}
+
+async function refresh() {
+  try { const r = await get("/api/state"); S = r.services; STATE = r.state; renderPills(); renderState();
+    $("#simBtn").textContent = S.simulator.active ? "Stop stream of comments" : "Start stream of comments"; } catch {}
+}
+
+// ── products ──
+async function loadProducts() {
+  PRODUCTS = (await get("/api/products")).products;
+  $("#prodCount").textContent = PRODUCTS.length;
+  const stock = { in_stock: "In stock", low_stock: "Low", out_of_stock: "Sold out" };
+  $("#prodRows").innerHTML = PRODUCTS.map((p) => `<tr>
+    <td><b>${esc(p.name)}</b><div class="small muted">${esc((p.features || p.description).slice(0, 80))}</div></td>
+    <td>${p.price != null ? "RM" + p.price : "—"}</td><td>${p.promo_price != null ? "RM" + p.promo_price : "—"}</td>
+    <td>${stock[p.stock_status]}</td><td>${p.active ? "✓" : "—"}</td>
+    <td style="white-space:nowrap"><button class="b small" onclick="editProduct(${p.id})">Edit</button>
+      <button class="b small r" onclick="delProduct(${p.id})">Delete</button></td></tr>`).join("")
+    || '<tr><td colspan="6" class="muted">No products yet. Add one on the right.</td></tr>';
+  const f = $("#featured");
+  f.innerHTML = '<option value="">(none)</option>' + PRODUCTS.filter((p) => p.active).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  f.value = STATE.featured_product_id ?? "";
+  renderTests();
+}
+const PF = ["name", "price", "promo_price", "stock_status", "sku", "description", "features", "tiktok_product_id"];
+function editProduct(id) {
+  const p = PRODUCTS.find((x) => x.id === id); $("#pf-id").value = id; $("#pfTitle").textContent = "Edit product";
+  PF.forEach((k) => $("#pf-" + k).value = p[k] ?? ""); $("#pf-active").checked = !!p.active;
+}
+function resetProductForm() {
+  $("#pf-id").value = ""; $("#pfTitle").textContent = "Add product"; PF.forEach((k) => $("#pf-" + k).value = "");
+  $("#pf-stock_status").value = "in_stock"; $("#pf-active").checked = true;
+}
+async function saveProduct() {
+  const body = Object.fromEntries(PF.map((k) => [k, $("#pf-" + k).value])); body.active = $("#pf-active").checked;
+  const id = $("#pf-id").value;
+  await api(id ? "PUT" : "POST", id ? "/api/products/" + id : "/api/products", body).catch((e) => { toast(e.message, "warning"); throw e; });
+  toast("Product saved"); resetProductForm(); loadProducts();
+}
+async function delProduct(id) { if (confirm("Delete this product?")) { await api("DELETE", "/api/products/" + id); loadProducts(); } }
+async function importCsv() { const r = await post("/api/products/import", { csv: $("#csv").value }); toast(`Imported ${r.imported} products`); $("#csv").value = ""; loadProducts(); }
+function loadCsvFile(inp) { const f = inp.files[0]; if (f) f.text().then((t) => $("#csv").value = t); }
+
+// ── settings ──
+const SECTIONS = {
+  deepseek: ["deepseek_api_key", "deepseek_model"],
+  voice: ["tts_engine", "elevenlabs_api_key", "elevenlabs_voice_id", "elevenlabs_model"],
+  persona: ["persona_name", "shop_name", "persona_style", "reply_language", "max_reply_words", "extra_rules"],
+  obs: ["obs_enabled", "obs_host", "obs_port", "obs_password", "obs_main_scene", "obs_brb_scene", "obs_switch_on_stop"],
+  avatar: ["avatar_driver", "vts_host", "vts_port", "vts_mouth_param", "vts_emotion_hotkeys"],
+  behaviour: ["mode", "idle_enabled", "idle_seconds", "user_cooldown_seconds", "comment_max_age_seconds", "max_pending"],
+};
+const SECRETS = ["deepseek_api_key", "elevenlabs_api_key", "obs_password"];
+function fillSettings(s) {
+  SETTINGS = s;
+  Object.values(SECTIONS).flat().forEach((k) => {
+    const el = $("#s-" + k); if (!el) return;
+    if (SECRETS.includes(k)) { el.value = ""; $("#h-" + k).textContent = s[k].set ? `✓ saved (${s[k].hint})` : ""; return; }
+    if (el.type === "checkbox") el.checked = !!s[k];
+    else if (k === "elevenlabs_voice_id") { if (s[k] && ![...el.options].some((o) => o.value === s[k])) el.add(new Option(s[k], s[k])); el.value = s[k] || ""; }
+    else el.value = s[k] ?? "";
+  });
+  $("#vtsBox").style.display = s.avatar_driver === "vtube_studio" ? "" : "none";
+}
+$("#s-avatar_driver").onchange = (e) => $("#vtsBox").style.display = e.target.value === "vtube_studio" ? "" : "none";
+async function saveSection(name) {
+  const values = {};
+  for (const k of SECTIONS[name]) {
+    const el = $("#s-" + k);
+    if (SECRETS.includes(k)) { if (el.value.trim()) values[k] = el.value.trim(); continue; }
+    values[k] = el.type === "checkbox" ? el.checked : (el.type === "number" ? Number(el.value) : el.value);
+  }
+  fillSettings(await post("/api/settings", { values })); toast("Saved"); refresh();
+}
+async function testDeepseek() { toast("Contacting DeepSeek…"); const r = await post("/api/test/deepseek"); toast("DeepSeek says: " + r.reply); refresh(); }
+async function testVoice(text) {
+  try { await api("POST", "/api/test/voice", { text: text || "" }); toast("Speaking test line: watch the preview or OBS"); }
+  catch (e) {
+    if (e.status === 402 && confirm("This will use ElevenLabs credits (about 60 characters). Continue?")) {
+      await post("/api/test/voice", { text: text || "", confirm: true }); toast("Speaking test line");
+    } else if (e.status !== 402) toast(e.message, "warning");
+  }
+}
+async function loadVoices() {
+  await saveSection("voice");
+  const { voices } = await post("/api/settings", { values: {} }).then(() => get("/api/voices")).catch((e) => { toast(e.message, "warning"); throw e; });
+  const el = $("#s-elevenlabs_voice_id"), cur = el.value;
+  el.innerHTML = voices.map((v) => `<option value="${esc(v.voice_id)}">${esc(v.name)} ${esc(Object.values(v.labels || {}).join(" · "))}</option>`).join("");
+  if (cur) el.value = cur; toast(`Loaded ${voices.length} voices. Pick one and press Save.`);
+}
+async function obsConnect() { await saveSection("obs"); const r = await post("/api/obs/connect"); toast(`OBS connected. Scenes: ${r.scenes.join(", ")}`); refresh(); }
+async function obsSetup() { const r = await post("/api/obs/setup"); toast("OBS: " + r.actions.join("; ")); }
+
+// ── tests checklist ──
+const TESTS = [
+  ["avatar", "Avatar animation", "The avatar cycles through expressions and moves its mouth.",
+    [["Run animation test", () => post("/api/avatar/test")]]],
+  ["speech", "AI-generated speech", "A line is spoken with the selected voice; the mouth moves with the audio.",
+    [["Speak test line", () => testVoice()], ["Speak in Malay", () => testVoice("Hai semua, terima kasih sebab join live kami hari ini!")]]],
+  ["intro", "Product introduction", "Pick a featured product on the Live tab. The AI writes an introduction that uses only catalogue facts and the correct RM price.",
+    [["Introduce featured product", () => introduce()]]],
+  ["simulate", "Simulated customer comments", "Start the AI, then send comments. Replies appear for approval (or are spoken in Autonomous mode). Abusive and spam comments are blocked.",
+    [["Start AI", () => ctl("start")], ["+5 comments", () => simBurst(5)]]],
+  ["concurrency", "Many comments at once and speech queueing", "25 comments arrive together. The avatar speaks one line at a time, never overlapping; extras are skipped or expire.",
+    [["Switch to Autonomous", () => post("/api/mode", { mode: "auto" })], ["+25 at once", () => simBurst(25)]]],
+  ["estop", "Emergency stop", "While speaking, press EMERGENCY STOP (or Esc). Audio stops instantly, queues clear, and OBS switches to the BRB scene.",
+    [["Press emergency stop", () => ctl("stop")], ["Resume", () => ctl("resume")]]],
+  ["takeover", "Human takeover", "Turn takeover on: the AI goes silent. Type a line; the avatar speaks your words.",
+    [["Takeover on", () => post("/api/takeover", { on: true })], ["Takeover off", () => post("/api/takeover", { on: false })]]],
+  ["obs", "Complete OBS output", "In OBS, the main scene shows the avatar, captions and product card, and the voice is heard on the OBS audio meter. Don't press Start Streaming.",
+    [["Connect OBS", () => obsConnect()], ["Create scenes", () => obsSetup()]]],
+];
+function renderTests() {
+  let done = {}; try { done = JSON.parse(localStorage.getItem("tests") || "{}"); } catch {}
+  $("#testList").innerHTML = TESTS.map(([id, title, desc, btns], i) => `<li>
+    <b>${esc(title)}</b><div class="small muted">${esc(desc)}</div>
+    <div class="row">${btns.map((b, j) => `<button class="b" onclick="TESTS[${i}][3][${j}][1]()">${esc(b[0])}</button>`).join("")}
+      <label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" style="width:auto"
+        ${done[id] ? "checked" : ""} onchange="markTest('${id}', this.checked)"> Worked on my PC</label></div></li>`).join("");
+}
+function markTest(id, v) { try { const d = JSON.parse(localStorage.getItem("tests") || "{}"); d[id] = v; localStorage.setItem("tests", JSON.stringify(d)); } catch {} }
+
+// ── history ──
+async function loadSessions() {
+  const { sessions } = await get("/api/sessions");
+  $("#sessions").innerHTML = sessions.map((s) => `<div class="cmt" style="cursor:pointer" onclick="loadHistory(${s.id})">
+    <b>#${s.id}</b> ${new Date(s.started_at * 1000).toLocaleString()}<br>
+    <span class="small muted">${s.comment_count} comments · ${s.spoken_count} spoken${s.ended_at ? "" : " · open"}</span></div>`).join("") || '<p class="muted">No sessions yet.</p>';
+}
+async function loadHistory(id) {
+  const h = await get("/api/history?session_id=" + id);
+  const rows = [...h.comments.map((c) => ({ t: c.created_at, html: `💬 <b>${esc(c.user)}</b>: ${esc(c.text)} <span class="pill">${esc(c.status)}${c.reason ? " · " + esc(c.reason) : ""}</span>` })),
+    ...h.replies.map((r) => ({ t: r.created_at, html: `🤖 <i>${esc(r.kind)}</i>: ${esc(r.text)} <span class="pill">${esc(r.status)}</span>` }))]
+    .sort((a, b) => a.t - b.t);
+  $("#historyBox").innerHTML = rows.map((r) => `<div class="cmt"><span class="small muted">${new Date(r.t * 1000).toLocaleTimeString()}</span> ${r.html}</div>`).join("") || "Empty session.";
+}
+
+$("#overlayUrl").textContent = `${location.origin}/overlay`;
+get("/api/settings").then(fillSettings);
+loadProducts(); refresh(); connectWS(); renderTests();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
