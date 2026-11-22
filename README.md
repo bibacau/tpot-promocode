@@ -29,6 +29,10 @@ comments (simulator / manual / [TikTok, Phase 4])
   → ElevenLabs / test voice → OBS overlay (avatar + captions + product card) → OBS
 ```
 - **Emergency stop** (button or `Esc`): cuts audio instantly, clears all queues, cancels in-flight AI replies and switches OBS to the BRB scene. Nothing speaks until you press Resume.
+- **Stream type: Selling or Casual chat** (Live tab toggle, also in Setup → Behaviour; you can switch mid-stream).
+  *Selling* uses your product catalogue, product card and intros. *Casual chat* makes the AI a friendly chat co-host:
+  no products, prices or basket. The product card is hidden, and quiet-chat lines are conversation starters.
+  Switching keeps your products and settings. Lines written for the other mode that haven't been spoken yet are discarded.
 - **Human takeover**: the AI goes silent; whatever you type is spoken by the avatar.
 - **Safety**: the app can never start or stop your stream (those OBS commands are blocked in code). It binds to `127.0.0.1` only, and API keys are stored locally and never shown again in full.
 - **Avatar is pluggable**: built-in 2D avatar (default), VTube Studio (Live2D), or none. See `salesbot/avatar.py`.

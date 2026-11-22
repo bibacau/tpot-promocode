@@ -43,6 +43,7 @@ DEFAULTS: dict[str, Any] = {
     "obs_brb_scene": "AI Salesperson - BRB",
     "obs_switch_on_stop": True,
     # behaviour
+    "stream_mode": "selling",          # selling (TikTok Shop) | casual (chat only, no selling)
     "mode": "approve",                 # approve (human approves every line) | auto
     "featured_product_id": None,
     "idle_seconds": 45,
@@ -80,6 +81,8 @@ class Settings:
                 value = want(value)
         if key == "mode" and value not in ("approve", "auto"):
             raise ValueError("mode must be 'approve' or 'auto'")
+        if key == "stream_mode" and value not in ("selling", "casual"):
+            raise ValueError("stream_mode must be 'selling' or 'casual'")
         self.db.set_setting(key, json.dumps(value))
 
     def update(self, values: dict[str, Any]) -> None:

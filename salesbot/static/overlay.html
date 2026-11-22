@@ -89,7 +89,7 @@
   if (PREVIEW) document.body.classList.add("preview");
   const $ = (id) => document.getElementById(id);
   const stage = $("stage"), avatar = $("avatar"), bubble = $("bubble"), card = $("card");
-  let ws, driver = "overlay", current = null, mouthLevel = 0, lastMouthSent = 0;
+  let ws, driver = "overlay", streamMode = "selling", current = null, mouthLevel = 0, lastMouthSent = 0;
   let audioCtx, analyser, audioEl, hideTimer, fakeTalk = false;
 
   function fit() {
@@ -148,7 +148,7 @@
   requestAnimationFrame(loop);
 
   function showCard(p) {
-    if (!p) { card.classList.remove("show"); return; }
+    if (!p || streamMode === "casual") { card.classList.remove("show"); return; }
     card.querySelector(".pname").textContent = p.name;
     const promo = p.live_promo_price_rm, price = p.price_rm;
     card.querySelector(".price").textContent = promo ? `RM${promo}` : price ? `RM${price}` : "";
@@ -230,11 +230,12 @@
     ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data);
       switch (m.type) {
-        case "hello": setDriver(m.avatar_driver); showCard(m.product);
+        case "hello": setDriver(m.avatar_driver); streamMode = m.stream_mode || "selling"; showCard(m.product);
           document.querySelector("#bubble .name").textContent = m.persona_name || "Aiko"; break;
         case "speak": onSpeak(m); break;
         case "stop_audio": stopAll(); setEmotion("neutral"); break;
         case "product": showCard(m.product); break;
+        case "stream_mode": streamMode = m.mode; showCard(m.product); break;
         case "emotion": setEmotion(m.emotion); break;
         case "avatar_driver": setDriver(m.driver); break;
         case "persona": document.querySelector("#bubble .name").textContent = m.name; break;

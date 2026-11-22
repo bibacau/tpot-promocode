@@ -58,6 +58,10 @@ class OnIn(BaseModel):
     on: bool
 
 
+class StreamModeIn(BaseModel):
+    mode: str
+
+
 class FeaturedIn(BaseModel):
     product_id: int | None = None
 
@@ -186,6 +190,7 @@ def create_app(data_dir: str | Path = "data", *, http_transport: httpx.AsyncBase
         await ws.send_text(json.dumps({"type": "hello", "state": orch.state(),
                                        "product": orch._card(settings.get("featured_product_id")),
                                        "avatar_driver": settings.get("avatar_driver"),
+                                       "stream_mode": settings.get("stream_mode"),
                                        "persona_name": settings.get("persona_name")}))
         try:
             while True:
@@ -224,10 +229,16 @@ def create_app(data_dir: str | Path = "data", *, http_transport: httpx.AsyncBase
         if unknown:
             raise HTTPException(400, f"Unknown settings: {unknown}")
         old_driver = settings.get("avatar_driver")
+        values = dict(body.values)
+        new_stream_mode = values.pop("stream_mode", None)
+        if new_stream_mode is not None and new_stream_mode not in ("selling", "casual"):
+            raise HTTPException(400, "stream_mode must be 'selling' or 'casual'")
         try:
-            settings.update(body.values)
+            settings.update(values)
         except (ValueError, TypeError) as e:
             raise HTTPException(400, str(e)) from e
+        if new_stream_mode is not None:
+            await orch.set_stream_mode(new_stream_mode)
         if settings.get("avatar_driver") != old_driver:
             with contextlib.suppress(Exception):
                 await orch.avatar.disconnect()
@@ -375,6 +386,11 @@ def create_app(data_dir: str | Path = "data", *, http_transport: httpx.AsyncBase
         if body.mode not in ("approve", "auto"):
             raise HTTPException(400, "mode must be approve or auto")
         await orch.set_mode(body.mode)
+        return ok(state=orch.state())
+
+    @app.post("/api/stream_mode")
+    async def stream_mode(body: StreamModeIn):
+        await act(orch.set_stream_mode(body.mode))
         return ok(state=orch.state())
 
     @app.post("/api/takeover")

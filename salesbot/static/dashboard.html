@@ -111,6 +111,11 @@
     <div class="row">
       <button class="b p" id="startBtn" onclick="ctl('start')">▶ Start AI</button>
       <button class="b" id="pauseBtn" onclick="ctl('pause')">❚❚ Pause AI</button>
+      <span class="muted small">Stream:</span>
+      <div class="toggle" id="streamToggle">
+        <button data-stream="casual" title="Friendly chat only: no products, prices or selling">Casual chat</button>
+        <button data-stream="selling" title="TikTok Shop selling stream with product catalogue">Selling</button>
+      </div>
       <span class="muted small">Mode:</span>
       <div class="toggle" id="modeToggle">
         <button data-mode="approve" title="Every AI line waits for your approval">Approve each line</button>
@@ -159,9 +164,12 @@
         <label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--ink)">
           <input type="checkbox" id="hearVoice" style="width:auto"> Hear voice in this browser</label>
       </div>
-      <label>Featured product</label>
-      <div class="row"><select id="featured" class="grow"></select>
-        <button class="b p" onclick="introduce()">Introduce</button></div>
+      <div id="sellingControls">
+        <label>Featured product</label>
+        <div class="row"><select id="featured" class="grow"></select>
+          <button class="b p" onclick="introduce()">Introduce</button></div>
+      </div>
+      <p id="casualNote" class="small muted" style="display:none">Casual chat stream: products are hidden and the AI won't sell. Your products are kept; switch Stream to Selling to bring them back.</p>
     </div>
   </div>
 </section>
@@ -279,6 +287,7 @@
 
     <div class="card">
       <h2><span class="step">6</span> Behaviour</h2>
+      <label>Stream type</label><select id="s-stream_mode"><option value="selling">Selling (TikTok Shop)</option><option value="casual">Casual chat (no selling)</option></select>
       <label>Default mode</label><select id="s-mode"><option value="approve">Approve each line (safest)</option><option value="auto">Autonomous</option></select>
       <label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" id="s-idle_enabled" style="width:auto"> Pitch the featured product when chat is quiet</label>
       <div class="row">
@@ -359,6 +368,7 @@ async function ctl(action) {
 }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") ctl("stop"); });
 document.querySelectorAll("#modeToggle button").forEach((b) => b.onclick = () => post("/api/mode", { mode: b.dataset.mode }));
+document.querySelectorAll("#streamToggle button").forEach((b) => b.onclick = () => post("/api/stream_mode", { mode: b.dataset.stream }));
 document.querySelectorAll("#takeoverToggle button").forEach((b) => b.onclick = () => post("/api/takeover", { on: b.dataset.on === "1" }));
 async function sendComment() {
   const text = $("#cText").value.trim(); if (!text) return;
@@ -402,6 +412,11 @@ function renderState() {
   $("#startBtn").disabled = st.running || st.stopped; $("#pauseBtn").disabled = !st.running;
   $("#startBtn").textContent = st.running ? "● AI running" : "▶ Start AI";
   document.querySelectorAll("#modeToggle button").forEach((b) => b.classList.toggle("on", b.dataset.mode === st.mode));
+  const casual = st.stream_mode === "casual";
+  document.querySelectorAll("#streamToggle button").forEach((b) => b.classList.toggle("on", b.dataset.stream === st.stream_mode));
+  $("#sellingControls").style.display = casual ? "none" : "";
+  $("#casualNote").style.display = casual ? "" : "none";
+  const sm = $("#s-stream_mode"); if (sm && document.activeElement !== sm && st.stream_mode) sm.value = st.stream_mode;
   document.querySelectorAll("#takeoverToggle button").forEach((b) => b.classList.toggle("on", (b.dataset.on === "1") === !!st.takeover));
   $("#cq").textContent = `${st.comment_queue} queued`;
   $("#sq").textContent = `${st.speech_queue} in queue` + (st.generating ? ` · ${st.generating} writing` : "");
@@ -497,7 +512,7 @@ const SECTIONS = {
   persona: ["persona_name", "shop_name", "persona_style", "reply_language", "max_reply_words", "extra_rules"],
   obs: ["obs_enabled", "obs_host", "obs_port", "obs_password", "obs_main_scene", "obs_brb_scene", "obs_switch_on_stop"],
   avatar: ["avatar_driver", "vts_host", "vts_port", "vts_mouth_param", "vts_emotion_hotkeys"],
-  behaviour: ["mode", "idle_enabled", "idle_seconds", "user_cooldown_seconds", "comment_max_age_seconds", "max_pending"],
+  behaviour: ["stream_mode", "mode", "idle_enabled", "idle_seconds", "user_cooldown_seconds", "comment_max_age_seconds", "max_pending"],
 };
 const SECRETS = ["deepseek_api_key", "elevenlabs_api_key", "obs_password"];
 function fillSettings(s) {
@@ -546,6 +561,8 @@ const TESTS = [
     [["Run animation test", () => post("/api/avatar/test")]]],
   ["speech", "AI-generated speech", "A line is spoken with the selected voice; the mouth moves with the audio.",
     [["Speak test line", () => testVoice()], ["Speak in Malay", () => testVoice("Hai semua, terima kasih sebab join live kami hari ini!")]]],
+  ["streammode", "Casual / selling switch", "Switch Stream to Casual chat: the product card disappears from the overlay and the AI chats without selling. Switch back to Selling: the card returns.",
+    [["Casual chat", () => post("/api/stream_mode", { mode: "casual" })], ["Selling", () => post("/api/stream_mode", { mode: "selling" })]]],
   ["intro", "Product introduction", "Pick a featured product on the Live tab. The AI writes an introduction that uses only catalogue facts and the correct RM price.",
     [["Introduce featured product", () => introduce()]]],
   ["simulate", "Simulated customer comments", "Start the AI, then send comments. Replies appear for approval (or are spoken in Autonomous mode). Abusive and spam comments are blocked.",

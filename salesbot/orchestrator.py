@@ -92,7 +92,8 @@ class Orchestrator:
     def state(self) -> dict:
         return {
             "running": self.running, "takeover": self.takeover, "stopped": self.stopped,
-            "mode": self.settings.get("mode"), "session_id": self.session_id,
+            "mode": self.settings.get("mode"), "stream_mode": self.settings.get("stream_mode"),
+            "session_id": self.session_id,
             "featured_product_id": self.settings.get("featured_product_id"),
             "comment_queue": len(self.comments), "speech_queue": len(self.speech),
             "generating": self.generating,
@@ -137,6 +138,32 @@ class Orchestrator:
         self.settings.set("mode", mode)
         await self.push_state()
 
+    @property
+    def casual(self) -> bool:
+        return self.settings.get("stream_mode") == "casual"
+
+    async def set_stream_mode(self, mode: str) -> None:
+        """Switch between 'selling' and 'casual' (works mid-stream; products and settings are kept)."""
+        if mode not in ("selling", "casual"):
+            raise ActionError("stream_mode must be 'selling' or 'casual'")
+        if mode == self.settings.get("stream_mode"):
+            await self.push_state()
+            return
+        self.settings.set("stream_mode", mode)
+        # Lines written for the other mode are stale: discard in-flight AI work and queued AI speech.
+        # The line currently being spoken finishes; human (takeover) lines are kept.
+        self.epoch += 1
+        for item in self.speech.remove_where(lambda i: i.kind != "takeover"):
+            self.db.set_reply_status(item.reply_id, "dropped")
+        for rid in [r for r, d in self.pending.items() if d.kind in ("intro", "idle")]:
+            self.pending.pop(rid)
+            self.db.set_reply_status(rid, "dropped")
+        self.last_activity = time.monotonic()
+        await self.emit("stream_mode", mode=mode,
+                        product=None if mode == "casual" else self._card(self.settings.get("featured_product_id")))
+        self._poke()
+        await self.push_state()
+
     async def set_featured(self, pid: int | None) -> None:
         if pid is not None and not self.db.get_product(pid):
             raise ActionError("Product not found")
@@ -145,6 +172,8 @@ class Orchestrator:
         await self.push_state()
 
     def _card(self, pid: int | None) -> dict | None:
+        if self.casual:
+            return None
         p = self.db.get_product(pid) if pid else None
         return product_facts(p) if p else None
 
@@ -223,6 +252,8 @@ class Orchestrator:
     async def introduce_product(self, pid: int) -> int:
         if self.stopped:
             raise ActionError("Emergency stop is active. Press Resume first.")
+        if self.casual:
+            raise ActionError("Casual chat stream: product introductions are off. Switch Stream to Selling first.")
         p = self.db.get_product(pid)
         if not p:
             raise ActionError("Product not found")
@@ -381,20 +412,21 @@ class Orchestrator:
         while True:
             await asyncio.sleep(1)
             g = self.settings.get
+            casual = self.casual
             pid = g("featured_product_id")
-            if not (self._ai_may_work() and g("idle_enabled") and pid) or self.current or self._pending_count() \
-                    or len(self.comments):
+            if not (self._ai_may_work() and g("idle_enabled") and (casual or pid)) or self.current \
+                    or self._pending_count() or len(self.comments):
                 continue
             if time.monotonic() - self.last_activity < float(g("idle_seconds")):
                 continue
-            p = self.db.get_product(pid)
-            if not p:
+            p = None if casual else self.db.get_product(pid)
+            if not casual and not p:
                 continue
             self.last_activity = time.monotonic()
             epoch = self.epoch
             self.generating += 1
             try:
-                draft = await self.engine.introduce_product(p, "idle")
+                draft = await (self.engine.chat_starter() if casual else self.engine.introduce_product(p, "idle"))
             finally:
                 self.generating -= 1
             if epoch == self.epoch and self._ai_may_work():
