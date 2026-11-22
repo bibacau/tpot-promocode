@@ -13,7 +13,7 @@ Compliant options:
 | Option | How | Notes |
 |---|---|---|
 | A. Human relay (works now) | A moderator watches TikTok LIVE Studio or the app and types key questions into the dashboard | Already built (comment box + approval) |
-| B. Your own screen | Read the comment panel of TikTok LIVE Studio on your PC with OCR | Doesn't touch TikTok's servers, but check TikTok's terms with them first. **Needs your decision.** |
+| B. Your own screen | Read the comment panel of TikTok LIVE Studio on your PC with OCR | **Chosen and built** (`salesbot/screen_reader.py`). Doesn't touch TikTok's servers. |
 | C. Official access | Ask TikTok (Partner/LIVE teams, or your TikTok Shop account manager) whether an authorised LIVE event API exists for your account | Unverified; worth asking |
 
 ## 2. TikTok Shop Open API — official, usable

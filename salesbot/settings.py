@@ -42,6 +42,11 @@ DEFAULTS: dict[str, Any] = {
     "obs_main_scene": "AI Salesperson",
     "obs_brb_scene": "AI Salesperson - BRB",
     "obs_switch_on_stop": True,
+    # TikTok comments read from your own screen (TikTok LIVE Studio comment panel, OCR)
+    "screen_monitor": 1,
+    "screen_region": None,             # {"left": x, "top": y, "width": w, "height": h} in monitor pixels
+    "screen_interval": 1.5,
+    "screen_ignore_names": "",         # comma-separated, e.g. your own TikTok name
     # behaviour
     "stream_mode": "selling",          # selling (TikTok Shop) | casual (chat only, no selling)
     "mode": "approve",                 # approve (human approves every line) | auto

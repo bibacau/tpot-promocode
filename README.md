@@ -5,7 +5,7 @@ DeepSeek writes the lines, ElevenLabs speaks them, an avatar moves its mouth, an
 You control everything from a local web dashboard, including human approval, takeover and an emergency stop.
 
 > Status: Phase 2 is built and covered by automated tests. Phase 3 hardware checks run on your PC
-> (Tests tab). TikTok is **not connected yet** (Phase 4, see `docs/PHASE4_TIKTOK.md`).
+> (Tests tab). TikTok comments are read **from your own screen** (see below and `docs/PHASE4_TIKTOK.md`).
 
 ## Quick start (Windows)
 1. Install **Python 3.10+** from python.org (tick "Add Python to PATH").
@@ -16,10 +16,21 @@ You control everything from a local web dashboard, including human approval, tak
    - OBS WebSocket password (OBS → Tools → WebSocket Server Settings), then press **Create scenes automatically**
 4. In **Products**, add your products or import `sample_products.csv`.
 5. On **Live**, pick a featured product, press **Start AI**, and test with simulated comments.
+6. To read real TikTok comments: open TikTok LIVE Studio, then in **Setup → 7** take a screenshot, drag a box over the
+   comment list, press **Save area**, then **Test reading**. Press **Start reading** on the Live tab when you go live.
+
+## Reading TikTok comments from the screen
+TikTok has no official API for LIVE comments, so the app reads the comment panel that TikTok LIVE Studio shows on your PC.
+It takes a screenshot of the area every 1.5 s, reads the text offline (RapidOCR: English, Malay and Chinese) and works out
+the name and comment for each row. New comments go through the same moderation, queue and approval as any other comment.
+Nothing is sent to TikTok.
+- Comments already on screen when you press Start are skipped, and each comment is read once even while it stays visible.
+- TikTok join, follow, share and gift lines are ignored. Add your own TikTok name under "Ignore these names".
+- Keep the comment panel visible and uncovered. Expect occasional OCR typos in names or text, and roughly a 1–3 s delay.
 
 ## How it works
 ```
-comments (simulator / manual / [TikTok, Phase 4])
+comments (simulator / manual / TikTok LIVE Studio screen reader)
   → moderation (links, spam, phone numbers, EN/BM/Hokkien profanity)
   → comment queue (buying questions first, dedupe, per-viewer cooldown, stale comments expire)
   → DeepSeek sales engine (catalogue facts only, replies in the viewer's language)

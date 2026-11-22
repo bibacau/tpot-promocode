@@ -144,6 +144,8 @@
         <button class="b" onclick="simBurst(25)">+25 at once</button>
         <button class="b" id="simBtn" onclick="simToggle()">Start stream of comments</button>
       </div>
+      <label>TikTok comments (read from screen)</label>
+      <div class="row"><button class="b" id="scrBtn" onclick="scrToggle()">Start reading TikTok comments</button></div>
     </div>
 
     <div class="card">
@@ -299,9 +301,38 @@
       <div class="row" style="margin-top:10px"><button class="b p" onclick="saveSection('behaviour')">Save</button></div>
     </div>
 
-    <div class="card">
-      <h2><span class="step">7</span> TikTok</h2>
-      <p class="muted">Not connected yet. Phase 4 will add only <b>official, authorised</b> TikTok integrations. Until then, use simulated or manually typed comments.</p>
+    <div class="card" style="grid-column: 1 / -1">
+      <h2><span class="step">7</span> TikTok comments: read from your screen</h2>
+      <p class="small muted">TikTok has no official API for LIVE comments, so the app reads the comment panel that <b>TikTok LIVE Studio</b>
+        shows on this PC (screenshot → text recognition, offline). Nothing is sent to TikTok. Keep the comment panel visible and
+        not covered by other windows while you're live.</p>
+      <div class="row">
+        <span class="small muted">Monitor</span><select id="scrMonitor" style="width:auto"><option value="1">1</option></select>
+        <button class="b" onclick="scrSnapshot()">1. Take screenshot</button>
+        <span class="small muted">2. Drag a box over the comment list</span>
+        <button class="b" onclick="scrSaveRegion()">3. Save area</button>
+        <button class="b" onclick="scrTest()">4. Test reading</button>
+        <span class="small" id="scrRegionTxt"></span>
+      </div>
+      <div id="scrPick" style="position:relative;display:none;margin-top:10px;max-width:100%;user-select:none;touch-action:none;cursor:crosshair">
+        <img id="scrImg" alt="Screenshot of your monitor" style="max-width:100%;display:block;border-radius:8px;border:1px solid var(--line)">
+        <div id="scrBox" style="position:absolute;border:3px solid var(--pink);background:rgba(224,71,158,.15);display:none;pointer-events:none"></div>
+      </div>
+      <div id="scrTestOut" class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-top:10px;display:none">
+        <div><div class="small muted">What the app sees</div><img id="scrTestImg" alt="Captured comment area" style="max-width:100%;border-radius:8px;border:1px solid var(--line)"></div>
+        <div><div class="small muted">Comments found (<span id="scrMs"></span> ms)</div><div id="scrFound" class="feed" style="max-height:260px"></div>
+          <details style="margin-top:6px"><summary class="small muted">Raw text lines</summary><pre id="scrRaw" class="small" style="white-space:pre-wrap"></pre></details></div>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <div class="grow"><label>Ignore these names (comma-separated, e.g. your own TikTok name)</label><input id="s-screen_ignore_names"></div>
+        <div style="width:150px"><label>Read every (seconds)</label><input id="s-screen_interval" type="number" step="0.5" min="0.5"></div>
+        <button class="b p" style="align-self:flex-end" onclick="saveSection('screen')">Save</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="b g" onclick="scrStart()">▶ Start reading comments</button>
+        <button class="b" onclick="post('/api/screen/stop').then(refresh)">■ Stop reading</button>
+        <span class="small muted" id="scrStatus"></span>
+      </div>
     </div>
   </div>
 </section>
@@ -404,7 +435,8 @@ function renderPills() {
     pill("OBS", obs, s.obs.last_error || (s.obs.enabled ? "" : "disabled")) +
     pill("Avatar", av, s.avatar.last_error || s.avatar.driver) +
     pill(`Overlay ×${s.overlay.connected}`, s.overlay.audio_players ? "ok" : "warn", "audio players: " + s.overlay.audio_players) +
-    pill("TikTok", "", "Phase 4");
+    pill(s.tiktok.active ? "TikTok: reading" : "TikTok", s.tiktok.active ? (s.tiktok.last_error ? "bad" : "ok") : "",
+      s.tiktok.last_error || (s.tiktok.active ? `${s.tiktok.comments_found} comments read` : "screen reader off"));
 }
 function renderState() {
   const st = STATE;
@@ -466,7 +498,10 @@ function connectWS() {
 
 async function refresh() {
   try { const r = await get("/api/state"); S = r.services; STATE = r.state; renderPills(); renderState();
-    $("#simBtn").textContent = S.simulator.active ? "Stop stream of comments" : "Start stream of comments"; } catch {}
+    $("#simBtn").textContent = S.simulator.active ? "Stop stream of comments" : "Start stream of comments";
+    $("#scrBtn").textContent = S.tiktok.active ? "Stop reading TikTok comments" : "Start reading TikTok comments";
+    $("#scrStatus").textContent = S.tiktok.active ? `Reading: ${S.tiktok.frames} frames, ${S.tiktok.comments_found} new comments` +
+      (S.tiktok.last_ms ? `, ${S.tiktok.last_ms} ms per read` : "") + (S.tiktok.last_error ? ` · ⚠️ ${S.tiktok.last_error}` : "") : "Not reading"; } catch {}
 }
 
 // ── products ──
@@ -512,11 +547,12 @@ const SECTIONS = {
   persona: ["persona_name", "shop_name", "persona_style", "reply_language", "max_reply_words", "extra_rules"],
   obs: ["obs_enabled", "obs_host", "obs_port", "obs_password", "obs_main_scene", "obs_brb_scene", "obs_switch_on_stop"],
   avatar: ["avatar_driver", "vts_host", "vts_port", "vts_mouth_param", "vts_emotion_hotkeys"],
+  screen: ["screen_ignore_names", "screen_interval"],
   behaviour: ["stream_mode", "mode", "idle_enabled", "idle_seconds", "user_cooldown_seconds", "comment_max_age_seconds", "max_pending"],
 };
 const SECRETS = ["deepseek_api_key", "elevenlabs_api_key", "obs_password"];
 function fillSettings(s) {
-  SETTINGS = s;
+  SETTINGS = s; if (typeof scrShowRegion === "function") scrShowRegion();
   Object.values(SECTIONS).flat().forEach((k) => {
     const el = $("#s-" + k); if (!el) return;
     if (SECRETS.includes(k)) { el.value = ""; $("#h-" + k).textContent = s[k].set ? `✓ saved (${s[k].hint})` : ""; return; }
@@ -555,6 +591,62 @@ async function loadVoices() {
 async function obsConnect() { await saveSection("obs"); const r = await post("/api/obs/connect"); toast(`OBS connected. Scenes: ${r.scenes.join(", ")}`); refresh(); }
 async function obsSetup() { const r = await post("/api/obs/setup"); toast("OBS: " + r.actions.join("; ")); }
 
+// ── TikTok screen reader ──
+let scrShot = null, scrSel = null;
+async function scrLoadMonitors() {
+  try {
+    const { monitors } = await api("POST", "/api/screen/monitors", {});
+    const el = $("#scrMonitor"), cur = SETTINGS.screen_monitor || 1;
+    el.innerHTML = monitors.map((m) => `<option value="${m.index}">${m.index} (${m.width}×${m.height})</option>`).join("");
+    el.value = cur;
+  } catch {}
+}
+function scrShowRegion() {
+  const r = SETTINGS.screen_region;
+  $("#scrRegionTxt").textContent = r ? `Saved area: ${r.width}×${r.height} at (${r.left}, ${r.top}) on monitor ${SETTINGS.screen_monitor}` : "No area saved yet";
+}
+async function scrSnapshot() {
+  toast("Taking screenshot…");
+  scrShot = await post("/api/screen/snapshot", { monitor: +$("#scrMonitor").value || 1 });
+  $("#scrImg").src = "data:image/jpeg;base64," + scrShot.image;
+  $("#scrPick").style.display = "inline-block"; $("#scrBox").style.display = "none"; scrSel = null;
+  const r = SETTINGS.screen_region;
+  if (r && SETTINGS.screen_monitor === scrShot.monitor) $("#scrImg").onload = () => scrDrawBox(r);
+}
+function scrDrawBox(r) {
+  const img = $("#scrImg"), k = img.clientWidth / scrShot.width, b = $("#scrBox");
+  Object.assign(b.style, { left: r.left * k + "px", top: r.top * k + "px", width: r.width * k + "px", height: r.height * k + "px", display: "block" });
+}
+(() => {
+  const pick = $("#scrPick"); let start = null;
+  const pos = (e) => { const b = $("#scrImg").getBoundingClientRect();
+    return { x: Math.max(0, Math.min(b.width, e.clientX - b.left)), y: Math.max(0, Math.min(b.height, e.clientY - b.top)) }; };
+  pick.addEventListener("pointerdown", (e) => { if (!scrShot) return; start = pos(e); pick.setPointerCapture(e.pointerId); e.preventDefault(); });
+  pick.addEventListener("pointermove", (e) => {
+    if (!start) return; const p = pos(e), k = scrShot.width / $("#scrImg").clientWidth;
+    scrSel = { left: Math.round(Math.min(start.x, p.x) * k), top: Math.round(Math.min(start.y, p.y) * k),
+               width: Math.round(Math.abs(p.x - start.x) * k), height: Math.round(Math.abs(p.y - start.y) * k) };
+    scrDrawBox(scrSel);
+  });
+  pick.addEventListener("pointerup", () => { start = null;
+    if (scrSel) $("#scrRegionTxt").textContent = `Selected ${scrSel.width}×${scrSel.height}. Press "Save area".`; });
+})();
+async function scrSaveRegion() {
+  if (!scrSel || scrSel.width < 40 || scrSel.height < 40) return toast("Take a screenshot and drag a box over the comment list first", "warning");
+  fillSettings(await post("/api/settings", { values: { screen_region: scrSel, screen_monitor: scrShot.monitor } }));
+  toast("Comment area saved"); scrShowRegion();
+}
+async function scrTest() {
+  const r = await post("/api/screen/test");
+  $("#scrTestOut").style.display = "grid"; $("#scrTestImg").src = "data:image/jpeg;base64," + r.image;
+  $("#scrMs").textContent = r.ms;
+  $("#scrFound").innerHTML = r.comments.map((c) => `<div class="cmt"><b>${esc(c.user)}</b><br>${esc(c.text)}</div>`).join("")
+    || '<p class="muted small">No comments recognised. Make the box cover only the comment list, then try again.</p>';
+  $("#scrRaw").textContent = r.lines.join("\n");
+}
+async function scrStart() { await post("/api/screen/start"); toast("Reading TikTok comments. Comments already on screen are skipped."); refresh(); }
+async function scrToggle() { if (S.tiktok?.active) await post("/api/screen/stop"); else await scrStart(); refresh(); }
+
 // ── tests checklist ──
 const TESTS = [
   ["avatar", "Avatar animation", "The avatar cycles through expressions and moves its mouth.",
@@ -573,6 +665,8 @@ const TESTS = [
     [["Press emergency stop", () => ctl("stop")], ["Resume", () => ctl("resume")]]],
   ["takeover", "Human takeover", "Turn takeover on: the AI goes silent. Type a line; the avatar speaks your words.",
     [["Takeover on", () => post("/api/takeover", { on: true })], ["Takeover off", () => post("/api/takeover", { on: false })]]],
+  ["screen", "Reading TikTok comments from the screen", "Open TikTok LIVE Studio (no need to go live: a preview or a test comment panel is enough), select the comment area in Setup → 7, press Test reading and check names and comments are recognised correctly.",
+    [["Test reading", () => scrTest()]]],
   ["obs", "Complete OBS output", "In OBS, the main scene shows the avatar, captions and product card, and the voice is heard on the OBS audio meter. Don't press Start Streaming.",
     [["Connect OBS", () => obsConnect()], ["Create scenes", () => obsSetup()]]],
 ];
@@ -602,7 +696,7 @@ async function loadHistory(id) {
 }
 
 $("#overlayUrl").textContent = `${location.origin}/overlay`;
-get("/api/settings").then(fillSettings);
+get("/api/settings").then((s) => { fillSettings(s); scrLoadMonitors(); });
 loadProducts(); refresh(); connectWS(); renderTests();
 setInterval(refresh, 3000);
 </script>

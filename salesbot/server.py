@@ -29,6 +29,7 @@ from .obs import OBSClient, OBSError
 from .orchestrator import ActionError, Orchestrator
 from .settings import DEFAULTS, SECRET_KEYS, Settings
 from .simulator import Simulator
+from . import screen_reader
 from .tts import TTS, TTSError
 
 log = logging.getLogger("salesbot")
@@ -84,8 +85,24 @@ class CsvIn(BaseModel):
     csv: str
 
 
+class MonitorIn(BaseModel):
+    monitor: int = 1
+
+
+def _valid_region(r: Any) -> dict | None:
+    if r in (None, "", {}):
+        return None
+    if not isinstance(r, dict):
+        raise ValueError("screen_region must be an object")
+    out = {k: int(r[k]) for k in ("left", "top", "width", "height")}
+    if out["left"] < 0 or out["top"] < 0 or out["width"] < 40 or out["height"] < 40:
+        raise ValueError("screen_region is too small")
+    return out
+
+
 def create_app(data_dir: str | Path = "data", *, http_transport: httpx.AsyncBaseTransport | None = None,
-               obs_connect=None, duration_scale: float = 1.0, background: bool = True) -> FastAPI:
+               obs_connect=None, duration_scale: float = 1.0, background: bool = True,
+               screen_capture=None, screen_ocr=None, screen_monitors=None) -> FastAPI:
     data_dir = Path(data_dir)
     db = Database(data_dir / "salesbot.sqlite3" if str(data_dir) != ":memory:" else ":memory:")
     settings = Settings(db)
@@ -104,6 +121,16 @@ def create_app(data_dir: str | Path = "data", *, http_transport: httpx.AsyncBase
     orch.avatar = build_avatar()
     sim = Simulator(orch.ingest_comment)
 
+    async def screen_alert(a: dict) -> None:
+        await hub.broadcast({"type": "alert", **a})
+
+    reader = screen_reader.ScreenCommentReader(
+        settings.get, orch.ingest_comment,
+        capture=screen_capture or screen_reader.grab, ocr=screen_ocr or screen_reader.rapid_ocr,
+        on_status=screen_alert)
+    capture_fn = screen_capture or screen_reader.grab
+    monitors_fn = screen_monitors or screen_reader.list_monitors
+
     async def reconnect_loop() -> None:
         while True:
             await asyncio.sleep(5)
@@ -121,6 +148,7 @@ def create_app(data_dir: str | Path = "data", *, http_transport: httpx.AsyncBase
         bg = asyncio.create_task(reconnect_loop()) if background else None
         yield
         sim.stop()
+        reader.stop()
         if bg:
             bg.cancel()
         await orch.shutdown()
@@ -129,6 +157,7 @@ def create_app(data_dir: str | Path = "data", *, http_transport: httpx.AsyncBase
 
     app = FastAPI(title="AI Salesperson", version=__version__, lifespan=lifespan)
     app.state.db, app.state.settings, app.state.orch, app.state.hub = db, settings, orch, hub
+    app.state.reader = reader
     app.state.sim, app.state.llm, app.state.tts, app.state.obs = sim, llm, tts, obs
 
     @app.middleware("http")
@@ -215,7 +244,7 @@ def create_app(data_dir: str | Path = "data", *, http_transport: httpx.AsyncBase
                 "avatar": orch.avatar.status(),
                 "overlay": {"connected": hub.overlays(), "audio_players": hub.players()},
                 "simulator": {"active": sim.active, "per_minute": sim.rate_per_min},
-                "tiktok": {"connected": False, "note": "Phase 4 — not connected"},
+                "tiktok": {"connected": reader.active, "method": "screen", **reader.status()},
             },
         }
 
@@ -231,6 +260,11 @@ def create_app(data_dir: str | Path = "data", *, http_transport: httpx.AsyncBase
         old_driver = settings.get("avatar_driver")
         values = dict(body.values)
         new_stream_mode = values.pop("stream_mode", None)
+        if "screen_region" in values:
+            try:
+                values["screen_region"] = _valid_region(values["screen_region"])
+            except (ValueError, KeyError, TypeError) as e:
+                raise HTTPException(400, f"Invalid screen_region: {e}") from e
         if new_stream_mode is not None and new_stream_mode not in ("selling", "casual"):
             raise HTTPException(400, "stream_mode must be 'selling' or 'casual'")
         try:
@@ -439,6 +473,53 @@ def create_app(data_dir: str | Path = "data", *, http_transport: httpx.AsyncBase
     async def sim_stop():
         sim.stop()
         return ok(active=False)
+
+    # ── TikTok comments from the screen (Plan B) ──
+    def _screen_err(e: Exception) -> HTTPException:
+        msg = str(e) or type(e).__name__
+        if isinstance(e, ImportError):
+            msg = f"Screen reading needs extra packages: run start.bat again to install them ({e})"
+        return HTTPException(400, msg)
+
+    @app.post("/api/screen/monitors")
+    async def screen_monitors_ep():
+        try:
+            return ok(monitors=await asyncio.to_thread(monitors_fn))
+        except Exception as e:  # noqa: BLE001
+            raise _screen_err(e) from e
+
+    @app.post("/api/screen/snapshot")
+    async def screen_snapshot(body: MonitorIn):
+        try:
+            img = await asyncio.to_thread(capture_fn, body.monitor, None)
+            b64, scale = await asyncio.to_thread(screen_reader.to_jpeg_b64, img)
+        except Exception as e:  # noqa: BLE001
+            raise _screen_err(e) from e
+        return ok(image=b64, scale=scale, width=img.width, height=img.height, monitor=body.monitor)
+
+    @app.post("/api/screen/test")
+    async def screen_test():
+        try:
+            img, lines, comments = await reader.read_once()
+            b64, _ = await asyncio.to_thread(screen_reader.to_jpeg_b64, img, 900, 80)
+        except Exception as e:  # noqa: BLE001
+            raise _screen_err(e) from e
+        return ok(image=b64, ms=reader.last_ms, lines=[r.text for r in screen_reader.group_rows(lines)],
+                  comments=[{"user": u, "text": t} for u, t in comments])
+
+    @app.post("/api/screen/start")
+    async def screen_start():
+        try:
+            reader.start()
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from e
+        await orch.push_state()
+        return ok(status=reader.status())
+
+    @app.post("/api/screen/stop")
+    async def screen_stop():
+        reader.stop()
+        return ok(status=reader.status())
 
     # ── history ──
     @app.get("/api/sessions")
