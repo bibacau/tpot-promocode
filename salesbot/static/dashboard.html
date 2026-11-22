@@ -314,6 +314,7 @@
         <button class="b" onclick="scrTest()">4. Test reading</button>
         <span class="small" id="scrRegionTxt"></span>
       </div>
+      <div class="small" id="scrAgentErr" style="color:var(--warn);margin-top:6px"></div>
       <div id="scrPick" style="position:relative;display:none;margin-top:10px;max-width:100%;user-select:none;touch-action:none;cursor:crosshair">
         <img id="scrImg" alt="Screenshot of your monitor" style="max-width:100%;display:block;border-radius:8px;border:1px solid var(--line)">
         <div id="scrBox" style="position:absolute;border:3px solid var(--pink);background:rgba(224,71,158,.15);display:none;pointer-events:none"></div>
@@ -326,6 +327,7 @@
       <div class="row" style="margin-top:6px">
         <div class="grow"><label>Ignore these names (comma-separated, e.g. your own TikTok name)</label><input id="s-screen_ignore_names"></div>
         <div style="width:150px"><label>Read every (seconds)</label><input id="s-screen_interval" type="number" step="0.5" min="0.5"></div>
+        <div class="grow"><label>Screen agent URL (Docker only; leave empty otherwise)</label><input id="s-screen_agent_url" placeholder="http://host.docker.internal:8766"></div>
         <button class="b p" style="align-self:flex-end" onclick="saveSection('screen')">Save</button>
       </div>
       <div class="row" style="margin-top:10px">
@@ -547,7 +549,7 @@ const SECTIONS = {
   persona: ["persona_name", "shop_name", "persona_style", "reply_language", "max_reply_words", "extra_rules"],
   obs: ["obs_enabled", "obs_host", "obs_port", "obs_password", "obs_main_scene", "obs_brb_scene", "obs_switch_on_stop"],
   avatar: ["avatar_driver", "vts_host", "vts_port", "vts_mouth_param", "vts_emotion_hotkeys"],
-  screen: ["screen_ignore_names", "screen_interval"],
+  screen: ["screen_ignore_names", "screen_interval", "screen_agent_url"],
   behaviour: ["stream_mode", "mode", "idle_enabled", "idle_seconds", "user_cooldown_seconds", "comment_max_age_seconds", "max_pending"],
 };
 const SECRETS = ["deepseek_api_key", "elevenlabs_api_key", "obs_password"];
@@ -595,7 +597,9 @@ async function obsSetup() { const r = await post("/api/obs/setup"); toast("OBS: 
 let scrShot = null, scrSel = null;
 async function scrLoadMonitors() {
   try {
-    const { monitors } = await api("POST", "/api/screen/monitors", {});
+    const { monitors, error } = await api("POST", "/api/screen/monitors", {});
+    $("#scrAgentErr").textContent = error ? "⚠️ " + error : "";
+    if (error) return;
     const el = $("#scrMonitor"), cur = SETTINGS.screen_monitor || 1;
     el.innerHTML = monitors.map((m) => `<option value="${m.index}">${m.index} (${m.width}×${m.height})</option>`).join("");
     el.value = cur;
@@ -606,7 +610,7 @@ function scrShowRegion() {
   $("#scrRegionTxt").textContent = r ? `Saved area: ${r.width}×${r.height} at (${r.left}, ${r.top}) on monitor ${SETTINGS.screen_monitor}` : "No area saved yet";
 }
 async function scrSnapshot() {
-  toast("Taking screenshot…");
+  toast("Taking screenshot…"); scrLoadMonitors();
   scrShot = await post("/api/screen/snapshot", { monitor: +$("#scrMonitor").value || 1 });
   $("#scrImg").src = "data:image/jpeg;base64," + scrShot.image;
   $("#scrPick").style.display = "inline-block"; $("#scrBox").style.display = "none"; scrSel = null;

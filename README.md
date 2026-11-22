@@ -19,6 +19,26 @@ You control everything from a local web dashboard, including human approval, tak
 6. To read real TikTok comments: open TikTok LIVE Studio, then in **Setup → 7** take a screenshot, drag a box over the
    comment list, press **Save area**, then **Test reading**. Press **Start reading** on the Live tab when you go live.
 
+## Running in Docker (optional)
+Instead of `start.bat`, you can run the app in a container. OBS, VTube Studio and TikTok LIVE Studio stay on your desktop.
+
+1. Install **Docker Desktop**, then double-click **`docker-start.bat`** (or run `docker compose up -d --build`).
+   The dashboard opens at <http://127.0.0.1:8765>. Your data lives in the `data/` folder next to the project.
+2. OBS and VTube Studio are reached through `host.docker.internal`, which is preset. The OBS overlay URL stays
+   `http://127.0.0.1:8765/overlay`, and the voice plays inside OBS, so no audio setup is needed.
+3. **Screen reading** (TikTok comments): a container can't see your desktop, so also double-click
+   **`screen_agent.bat`** and leave its window open. It only takes screenshots of the area you select and hands them to the
+   container. It listens on localhost only and uses a random token stored in `data/screen_agent_token`, which the
+   container reads by itself. The OCR runs in the container. The agent needs Python on Windows, but only two small
+   packages (mss, pillow).
+4. Stop with `docker compose down`. Update with `docker compose up -d --build`.
+
+The port is published on `127.0.0.1` only, the app runs as an unprivileged user, and there's a healthcheck.
+Any built-in default can be preset with an environment variable `SALESBOT_DEFAULT_<SETTING>` (for example
+`SALESBOT_DEFAULT_OBS_PORT=4460`). Values saved in the dashboard always win.
+**Linux hosts:** start the agent with `python -m salesbot.screen_agent --host 172.17.0.1` (the docker0 IP), because there
+`host.docker.internal` reaches the bridge, not localhost.
+
 ## Reading TikTok comments from the screen
 TikTok has no official API for LIVE comments, so the app reads the comment panel that TikTok LIVE Studio shows on your PC.
 It takes a screenshot of the area every 1.5 s, reads the text offline (RapidOCR: English, Malay and Chinese) and works out
@@ -52,7 +72,7 @@ comments (simulator / manual / TikTok LIVE Studio screen reader)
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest
-python -m salesbot           # SALESBOT_PORT, SALESBOT_DATA, SALESBOT_NO_BROWSER=1
+python -m salesbot           # SALESBOT_HOST, SALESBOT_PORT, SALESBOT_DATA, SALESBOT_NO_BROWSER=1, SALESBOT_ALLOWED_HOSTS
 ```
 Data (SQLite database and generated audio) lives in `data/`, which git ignores.
 Credits for adapted ideas are in `THIRD_PARTY_NOTICES.md`.

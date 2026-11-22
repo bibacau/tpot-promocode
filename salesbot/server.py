@@ -34,7 +34,9 @@ from .tts import TTS, TTSError
 
 log = logging.getLogger("salesbot")
 STATIC = Path(__file__).parent / "static"
-LOCAL_HOSTS = {"127.0.0.1", "localhost", "testserver"}
+# Extra hostnames can be allowed with SALESBOT_ALLOWED_HOSTS (comma-separated), e.g. for a LAN setup.
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "testserver"} | {
+    h.strip().lower() for h in os.environ.get("SALESBOT_ALLOWED_HOSTS", "").split(",") if h.strip()}
 
 
 class SettingsIn(BaseModel):
@@ -126,10 +128,31 @@ def create_app(data_dir: str | Path = "data", *, http_transport: httpx.AsyncBase
 
     reader = screen_reader.ScreenCommentReader(
         settings.get, orch.ingest_comment,
-        capture=screen_capture or screen_reader.grab, ocr=screen_ocr or screen_reader.rapid_ocr,
+        capture=lambda m, r: capture_fn(m, r), ocr=screen_ocr or screen_reader.rapid_ocr,
         on_status=screen_alert)
-    capture_fn = screen_capture or screen_reader.grab
-    monitors_fn = screen_monitors or screen_reader.list_monitors
+    def agent() -> tuple[str, str] | None:
+        url = (settings.get("screen_agent_url") or "").strip()
+        if not url:
+            return None
+        token = settings.get("screen_agent_token") or ""
+        tf = (data_dir if str(data_dir) != ":memory:" else Path("data")) / "screen_agent_token"
+        if not token and tf.exists():
+            token = tf.read_text().strip()
+        if not token:
+            raise PermissionError("Screen agent token not found. Start screen_agent.bat on your PC first.")
+        return url, token
+
+    def capture_fn(monitor: int, region: dict | None):
+        a = agent()
+        if a:
+            return screen_reader.remote_grab(a[0], a[1], monitor, region)
+        return (screen_capture or screen_reader.grab)(monitor, region)
+
+    def monitors_fn() -> list[dict]:
+        a = agent()
+        if a:
+            return screen_reader.remote_monitors(*a)
+        return (screen_monitors or screen_reader.list_monitors)()
 
     async def reconnect_loop() -> None:
         while True:
@@ -483,10 +506,11 @@ def create_app(data_dir: str | Path = "data", *, http_transport: httpx.AsyncBase
 
     @app.post("/api/screen/monitors")
     async def screen_monitors_ep():
+        # Called on every dashboard load, so a missing screen agent is reported, not raised.
         try:
-            return ok(monitors=await asyncio.to_thread(monitors_fn))
+            return ok(monitors=await asyncio.to_thread(monitors_fn), error=None)
         except Exception as e:  # noqa: BLE001
-            raise _screen_err(e) from e
+            return ok(monitors=[], error=_screen_err(e).detail)
 
     @app.post("/api/screen/snapshot")
     async def screen_snapshot(body: MonitorIn):
@@ -540,10 +564,12 @@ def main() -> None:
     import uvicorn
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)   # one line per screenshot/API call is too noisy
     port = int(os.environ.get("SALESBOT_PORT", "8765"))
+    host = os.environ.get("SALESBOT_HOST", "127.0.0.1")   # Docker sets 0.0.0.0 (published on host loopback only)
     data_dir = Path(os.environ.get("SALESBOT_DATA", Path.cwd() / "data"))
     url = f"http://127.0.0.1:{port}/"
     print(f"\n  AI Salesperson dashboard: {url}\n  OBS overlay URL:          {url}overlay\n")
     if os.environ.get("SALESBOT_NO_BROWSER") != "1":
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
-    uvicorn.run(create_app(data_dir), host="127.0.0.1", port=port, log_level="warning")
+    uvicorn.run(create_app(data_dir), host=host, port=port, log_level="warning")

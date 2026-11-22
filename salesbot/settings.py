@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from .db import Database
 
-SECRET_KEYS = {"deepseek_api_key", "elevenlabs_api_key", "obs_password", "vts_token"}
+SECRET_KEYS = {"deepseek_api_key", "elevenlabs_api_key", "obs_password", "vts_token", "screen_agent_token"}
 
 DEFAULTS: dict[str, Any] = {
     # persona & shop
@@ -47,6 +48,7 @@ DEFAULTS: dict[str, Any] = {
     "screen_region": None,             # {"left": x, "top": y, "width": w, "height": h} in monitor pixels
     "screen_interval": 1.5,
     "screen_ignore_names": "",         # comma-separated, e.g. your own TikTok name
+    "screen_agent_url": "",            # Docker: e.g. http://host.docker.internal:8766 (empty = capture locally)
     # behaviour
     "stream_mode": "selling",          # selling (TikTok Shop) | casual (chat only, no selling)
     "mode": "approve",                 # approve (human approves every line) | auto
@@ -59,6 +61,23 @@ DEFAULTS: dict[str, Any] = {
 }
 
 
+def env_default(key: str, fallback: Any = None) -> Any:
+    """SALESBOT_DEFAULT_<KEY> overrides a built-in default (used by Docker, e.g. OBS host).
+    Values you save in the dashboard always win over these."""
+    raw = os.environ.get(f"SALESBOT_DEFAULT_{key.upper()}")
+    if raw is None:
+        return DEFAULTS.get(key, fallback)
+    base = DEFAULTS.get(key)
+    try:
+        if isinstance(base, bool):
+            return raw.strip().lower() in ("1", "true", "yes", "on")
+        if isinstance(base, (int, float)):
+            return type(base)(raw)
+    except ValueError:
+        return base
+    return raw
+
+
 class Settings:
     def __init__(self, db: Database) -> None:
         self.db = db
@@ -66,7 +85,7 @@ class Settings:
     def get(self, key: str, default: Any = None) -> Any:
         raw = self.db.get_setting(key)
         if raw is None:
-            return DEFAULTS.get(key, default)
+            return env_default(key, default)
         try:
             return json.loads(raw)
         except json.JSONDecodeError:

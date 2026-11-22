@@ -206,6 +206,36 @@ def grab(monitor: int, region: dict | None = None):
         return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
 
 
+def remote_grab(url: str, token: str, monitor: int, region: dict | None):
+    """Ask the host-side screen agent (salesbot.screen_agent) for a screenshot."""
+    import httpx
+    from PIL import Image
+    params: dict[str, Any] = {"monitor": monitor}
+    if region:
+        params.update({k: int(region[k]) for k in ("left", "top", "width", "height")})
+    try:
+        r = httpx.get(f"{url.rstrip('/')}/grab", params=params, headers={"X-Agent-Token": token}, timeout=10,
+                      trust_env=False)
+    except httpx.HTTPError as e:
+        raise ConnectionError(f"Screen agent not reachable at {url}: start screen_agent.bat on your PC ({e})") from e
+    if r.status_code == 401:
+        raise PermissionError("Screen agent rejected the token (data/screen_agent_token mismatch)")
+    if r.status_code != 200:
+        raise RuntimeError(f"Screen agent error {r.status_code}: {r.text[:200]}")
+    return Image.open(io.BytesIO(r.content)).convert("RGB")
+
+
+def remote_monitors(url: str, token: str) -> list[dict]:
+    import httpx
+    try:
+        r = httpx.get(f"{url.rstrip('/')}/monitors", headers={"X-Agent-Token": token}, timeout=10, trust_env=False)
+    except httpx.HTTPError as e:
+        raise ConnectionError(f"Screen agent not reachable at {url}: start screen_agent.bat on your PC ({e})") from e
+    if r.status_code != 200:
+        raise RuntimeError(f"Screen agent error {r.status_code}: {r.text[:200]}")
+    return r.json()["monitors"]
+
+
 _ocr_engine = None
 
 

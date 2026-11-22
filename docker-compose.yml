@@ -1,0 +1,13 @@
+# docker compose up -d   →  dashboard at http://127.0.0.1:8765
+services:
+  salesbot:
+    build: .
+    image: salesbot:latest
+    container_name: salesbot
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8765"        # only reachable from this PC (OBS loads the overlay from here)
+    volumes:
+      - ./data:/data                 # database, generated audio, screen agent token
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # needed on Linux; harmless on Docker Desktop
